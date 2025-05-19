@@ -1,0 +1,20 @@
+{
+  // — keep your existing settings…
+  "editor.formatOnSave": true,
+  // automatically apply code actions (organise imports, fix lints) on save:
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit",
+    "source.fixAll": "explicit"
+  },
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code"
+  },
+  // exclude generated folders from analysis
+  "dart.analysisExcludedFolders": [
+    "build/",
+    ".dart_tool/",
+    "tool/**.g.dart"
+  ],
+  // wrap at 80 cols
+  "dart.lineLength": 80,
+}
