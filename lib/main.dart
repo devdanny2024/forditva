@@ -3,6 +3,10 @@ import 'dart:math' as math; // ← Add this at the top of your file
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'help_support_page.dart';
+import 'license_credit_page.dart';
+import 'settings_page.dart';
+
 const Color navRed = Color(0xFFCD2A3E);
 const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
@@ -40,8 +44,8 @@ class _MainScreenState extends State<MainScreen> {
     SizedBox.shrink(), // 0: drawer/menu placeholder
     TextPage(), // 1: Conversation
     LearningListPage(), // 2: Learning List
-    Center(child: Text('Favorites')), // 3: Favorites
-    Center(child: Text('History')), // 4: History
+    FavoritePage(),
+    HistoryPage(), // 4: History (was placeholder)
     DocumentPlaceholderPage(), // Added: index 5
     ImagePlaceholderPage(), // Added: index 6
   ];
@@ -74,9 +78,40 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       drawer: Drawer(
         child: ListView(
+          padding: EdgeInsets.zero,
           children: [
             DrawerHeader(child: Text('Menu')),
-            ListTile(title: Text('Settings')),
+            // You can flesh these out later per the doc
+            ListTile(
+              leading: Icon(Icons.attach_money, color: navGreen),
+              title: Text('License & Credit'),
+              onTap: () {
+                Navigator.of(context).pop(); // close drawer
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LicenseCreditPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings, color: navGreen),
+              title: Text('Settings'),
+              onTap: () {
+                Navigator.of(context).pop(); // close drawer
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.help_outline, color: navGreen),
+              title: Text('Help & Support'),
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const HelpSupportPage()),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -134,19 +169,22 @@ class _MainScreenState extends State<MainScreen> {
                         // MENU
                         Flexible(
                           flex: 1,
-                          child: GestureDetector(
-                            onTap: _openDrawer,
-                            child: Container(
-                              color: navRed,
-                              alignment: Alignment.center,
-                              child: Image.asset(
-                                'assets/images/menu_w.png',
-                                width: 35,
-                                height: 35,
-                                color: Colors.white,
-                                colorBlendMode: BlendMode.srcIn,
-                              ),
-                            ),
+                          child: Builder(
+                            builder:
+                                (ctx) => GestureDetector(
+                                  onTap: () => Scaffold.of(ctx).openDrawer(),
+                                  child: Container(
+                                    color: navRed,
+                                    alignment: Alignment.center,
+                                    child: Image.asset(
+                                      'assets/images/menu_w.png',
+                                      width: 35,
+                                      height: 35,
+                                      color: Colors.white,
+                                      colorBlendMode: BlendMode.srcIn,
+                                    ),
+                                  ),
+                                ),
                           ),
                         ),
 
@@ -175,13 +213,6 @@ class _MainScreenState extends State<MainScreen> {
                                     : 'assets/images/photo_mode_w.png',
                                 width: 35,
                                 height: 35,
-                                color:
-                                    (_currentPage == 1 ||
-                                            _currentPage == 5 ||
-                                            _currentPage == 6)
-                                        ? Colors.white
-                                        : Colors.grey,
-                                colorBlendMode: BlendMode.srcIn,
                               ),
                             ),
                           ),
@@ -1079,7 +1110,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         builder: (context, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
                           final iconSize = (panelH * 0.15).clamp(16.0, 32.0);
-                          final fontSize = (panelH * 0.1).clamp(12.0, 35.0);
+                          final fontSize = 20.0;
 
                           return Stack(
                             children: [
@@ -1102,7 +1133,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                 right: 16,
                                 child: Text(
                                   'Szeretnék elmenni a vasútállomásra, de nem ismerem az utat. Hová kell mennem, és mennyi idôbe telik az ut?',
-                                  textAlign: TextAlign.center,
+                                  textAlign: TextAlign.start,
                                   style: GoogleFonts.robotoCondensed(
                                     fontSize: fontSize,
                                     fontWeight: FontWeight.w500,
@@ -1236,6 +1267,310 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class HistoryPage extends StatefulWidget {
+  const HistoryPage({super.key});
+
+  static const List<Map<String, String>> translations = <Map<String, String>>[
+    {
+      'source':
+          'A dunai hajókirándulás lenyűgöző volt, rengeteg emléket hagyott bennem.',
+      'translation':
+          'Die Donauschifffahrt war beeindruckend und hinterließ viele Erinnerungen.',
+    },
+    {
+      'source':
+          'Honey never spoils because of its natural composition and low moisture content.',
+      'translation':
+          'Honig verdirbt niemals aufgrund seiner natürlichen Zusammensetzung und niedrigen Feuchtigkeit.',
+    },
+    {
+      'source':
+          'A macskák nagyon kíváncsiak és szeretnek felfedezni minden zugot a házban.',
+      'translation':
+          'Katzen sind sehr neugierig und erkunden gerne jeden Winkel des Hauses.',
+    },
+    {
+      'source':
+          'The Eiffel Tower is 300 meters tall and glitters with lights every evening.',
+      'translation':
+          'Der Eiffelturm ist 300 Meter hoch und funkelt jeden Abend mit Lichtern.',
+    },
+    {
+      'source':
+          'Az erdei séta frissítő élmény volt, madárcsicsergés és friss levegő vett körül.',
+      'translation':
+          'Der Waldspaziergang war erfrischend mit Vogelgezwitscher und frischer Luft.',
+    },
+    {
+      'source':
+          'Water boils at 100°C under standard atmospheric pressure conditions.',
+      'translation':
+          'Wasser kocht bei 100°C unter normalen atmosphärischen Druckbedingungen.',
+    },
+    {
+      'source':
+          'A naplemente gyönyörű a tengerparton, a narancs és rózsaszín árnyalatok csodásak.',
+      'translation':
+          'Der Sonnenuntergang am Strand ist wunderschön mit orange-rosa Farbtönen.',
+    },
+    {
+      'source':
+          'The Amazon rainforest produces 20% of the world’s oxygen and hosts diverse species.',
+      'translation':
+          'Der Amazonas-Regenwald produziert 20% des Sauerstoffs der Welt und beherbergt viele Arten.',
+    },
+    {
+      'source':
+          'Csokoládé fogyasztása boldogsághormonokat szabadít fel az agyban, ami jó érzést kelt.',
+      'translation':
+          'Schokolade setzt Glückshormone im Gehirn frei und vermittelt ein gutes Gefühl.',
+    },
+    {
+      'source':
+          'English is spoken by over 1.5 billion people worldwide as a native or second language.',
+      'translation':
+          'Englisch wird weltweit von über 1,5 Milliarden Menschen als Muttersprache oder Zweitsprache gesprochen.',
+    },
+  ];
+
+  @override
+  _HistoryPageState createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  final Set<int> _favoritedIndices = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Search bar
+            TextField(
+              decoration: InputDecoration(
+                hintText: 'Search history...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: Icon(Icons.mic, color: Colors.black),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Scrollable list
+            Expanded(
+              child: ListView.builder(
+                itemCount: HistoryPage.translations.length,
+                itemBuilder: (context, index) {
+                  final item = HistoryPage.translations[index];
+                  final isFav = _favoritedIndices.contains(index);
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 40),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['source']!,
+                                style: const TextStyle(
+                                  color: navGreen,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item['translation']!,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 14,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              setState(() {
+                                if (isFav) {
+                                  _favoritedIndices.remove(index);
+                                } else {
+                                  _favoritedIndices.add(index);
+                                }
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    isFav
+                                        ? 'Removed from favorites'
+                                        : 'Saved to favorite',
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                isFav ? Icons.favorite : Icons.favorite_border,
+                                color: isFav ? navRed : Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FavoritePage extends StatelessWidget {
+  const FavoritePage({super.key});
+
+  // 4 sample “favorite” translations
+  static const List<Map<String, String>>
+  favoriteTranslations = <Map<String, String>>[
+    <String, String>{
+      'source':
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
+      'translation':
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
+    },
+    <String, String>{
+      'source': 'Honey never spoils even after thousands of years.',
+      'translation':
+          'Honig verdirbt niemals, selbst nach Tausenden von Jahren.',
+    },
+    <String, String>{
+      'source':
+          'A macskák nagyon kíváncsiak és szeretnek felfedezni új helyeket.',
+      'translation':
+          'Katzen sind sehr neugierig und lieben es, neue Orte zu erkunden.',
+    },
+    <String, String>{
+      'source':
+          'The Eiffel Tower is 300 meters tall and lights up every night.',
+      'translation':
+          'Der Eiffelturm ist 300 Meter hoch und leuchtet jede Nacht.',
+    },
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // search bar with black mic
+            TextField(
+              decoration: InputDecoration(
+                hintText: 'Search favorites...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: const Icon(Icons.mic, color: Colors.black),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 0,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // 4-item scrollable list
+            Expanded(
+              child: ListView.builder(
+                itemCount: favoriteTranslations.length,
+                itemBuilder: (context, index) {
+                  final item = favoriteTranslations[index];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // source text (navGreen), max 2 lines
+                        Text(
+                          item['source']!,
+                          style: const TextStyle(
+                            color: navGreen,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        // translation text (black), max 2 lines
+                        Text(
+                          item['translation']!,
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 14,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

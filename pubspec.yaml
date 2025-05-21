@@ -1,6 +1,6 @@
 name: forditva
 description: "A new Flutter project."
-publish_to: 'none' # Prevents accidental pub.dev publishing
+publish_to: "none" # Prevents accidental pub.dev publishing
 
 version: 1.0.0+1
 
@@ -11,17 +11,19 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Launch URLs in the browser
+  url_launcher: ^6.1.7
+
   # iOS-style icons
   cupertino_icons: ^1.0.8
 
-  # Google Fonts package (now under dependencies at the same level)
+  # Google Fonts
   google_fonts: ^5.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Lint rules
   flutter_lints: ^5.0.0
 
 flutter:
@@ -30,8 +32,3 @@ flutter:
   assets:
     - assets/flags/
     - assets/images/
-    - assets/images/switch.png
-    - assets/flags/HU_BB.png
-    - assets/flags/DE_BW.png
-    - assets/images/HU-EN.png   # ← must match this spelling
-    - assets/images/DE-EN.png
