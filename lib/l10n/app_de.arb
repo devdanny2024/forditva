@@ -1,0 +1,15 @@
+{
+  "@@locale": "de",
+  "title": "Taalvertaler",
+    "menu": "Menü",
+  "conversation": "Gesprek",
+  "learningList": "Leerlijst",
+  "favorites": "Favorieten",
+  "history": "Geschiedenis",
+  "helpSupport": "Help & Ondersteuning",
+  "settings": "Instellingen",
+    "documentMode": "Dokument",
+  "imageMode": "Bild",
+  "licenseCredit": "Licentie & Credits",
+  "searchHint": "Zoeken…"
+}

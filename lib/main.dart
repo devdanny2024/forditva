@@ -1,44 +1,78 @@
 import 'dart:math' as math; // ← Add this at the top of your file
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'help_support_page.dart';
 import 'license_credit_page.dart';
 import 'settings_page.dart';
 
+// Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
 const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
+const Color gold = Colors.amber;
 
 enum Language { hungarian, german, english }
 
-void main() => runApp(MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // ← add this
+  runApp(const MyApp());
+}
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final ValueNotifier<Locale?> _localeNotifier = ValueNotifier<Locale?>(null);
+
+  void setLocale(Locale locale) {
+    _localeNotifier.value = locale;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Lang Translator App',
-      theme: ThemeData(primarySwatch: Colors.green),
-      home: MainScreen(),
+    return ValueListenableBuilder<Locale?>(
+      valueListenable: _localeNotifier,
+      builder: (context, locale, _) {
+        return MaterialApp(
+          locale: locale,
+          debugShowCheckedModeBanner: false,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          title: 'Lang Translator App',
+          theme: ThemeData(primarySwatch: Colors.green),
+          home: MainScreen(
+            key: ValueKey(locale?.languageCode), // <- this forces rebuild
+            onLocaleChanged: setLocale,
+          ),
+        );
+      },
     );
   }
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final void Function(Locale) onLocaleChanged;
+
+  const MainScreen({super.key, required this.onLocaleChanged});
 
   @override
   _MainScreenState createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  // 1: Conversation, 2: Learning List, 3: Favorites, 4: History
   int _currentPage = 1;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    print("Current locale: ${Localizations.localeOf(context)}");
+  }
 
   final List<Widget> _pages = [
     SizedBox.shrink(), // 0: drawer/menu placeholder
@@ -46,31 +80,27 @@ class _MainScreenState extends State<MainScreen> {
     LearningListPage(), // 2: Learning List
     FavoritePage(),
     HistoryPage(), // 4: History (was placeholder)
-    DocumentPlaceholderPage(), // Added: index 5
-    ImagePlaceholderPage(), // Added: index 6
+    DocumentPlaceholderPage(), // 5: Document
+    ImagePlaceholderPage(), // 6: Image
   ];
 
   String _getPageName(int idx) {
     switch (idx) {
       case 1:
-        return 'Conversation';
+        return AppLocalizations.of(context)!.conversation;
       case 2:
-        return 'Learning List';
+        return AppLocalizations.of(context)!.learningList;
       case 3:
-        return 'Favorites';
+        return AppLocalizations.of(context)!.favorites;
       case 4:
-        return 'History';
+        return AppLocalizations.of(context)!.history;
       case 5:
-        return 'Document'; // Added
+        return AppLocalizations.of(context)!.documentMode;
       case 6:
-        return 'Image'; // Added
+        return AppLocalizations.of(context)!.imageMode;
       default:
         return '';
     }
-  }
-
-  void _openDrawer() {
-    Scaffold.of(context).openDrawer();
   }
 
   @override
@@ -80,13 +110,12 @@ class _MainScreenState extends State<MainScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            DrawerHeader(child: Text('Menu')),
-            // You can flesh these out later per the doc
+            DrawerHeader(child: Text(AppLocalizations.of(context)!.menu)),
             ListTile(
               leading: Icon(Icons.attach_money, color: navGreen),
-              title: Text('License & Credit'),
+              title: Text(AppLocalizations.of(context)!.licenseCredit),
               onTap: () {
-                Navigator.of(context).pop(); // close drawer
+                Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const LicenseCreditPage()),
                 );
@@ -94,17 +123,24 @@ class _MainScreenState extends State<MainScreen> {
             ),
             ListTile(
               leading: Icon(Icons.settings, color: navGreen),
-              title: Text('Settings'),
+              title: Text(AppLocalizations.of(context)!.settings),
               onTap: () {
-                Navigator.of(context).pop(); // close drawer
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const SettingsPage()));
+                Navigator.of(context).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (_) => SettingsPage(
+                          onLocaleChanged: (locale) {
+                            widget.onLocaleChanged(locale);
+                          },
+                        ),
+                  ),
+                );
               },
             ),
             ListTile(
               leading: Icon(Icons.help_outline, color: navGreen),
-              title: Text('Help & Support'),
+              title: Text(AppLocalizations.of(context)!.helpSupport),
               onTap: () {
                 Navigator.of(context).pop();
                 Navigator.of(context).push(
@@ -120,20 +156,17 @@ class _MainScreenState extends State<MainScreen> {
         child: AppBar(
           automaticallyImplyLeading: false,
           centerTitle: true,
-          toolbarHeight: kToolbarHeight - 20, // ← 56 − 20 = 36px tall
-
-          elevation: 0, // keep it flush
+          toolbarHeight: kToolbarHeight - 20,
+          elevation: 0,
         ),
       ),
       body: _pages[_currentPage],
       bottomNavigationBar: Container(
-        // internal bottom padding
         padding: const EdgeInsets.only(bottom: 8.0),
         child: SizedBox(
           height: 56,
           child: Stack(
             children: [
-              // ─── LEFT GREEN PANEL ─────────────────────────────────────────
               Positioned(
                 left: 0,
                 right: 20,
@@ -141,8 +174,6 @@ class _MainScreenState extends State<MainScreen> {
                 bottom: 0,
                 child: Container(color: navRed),
               ),
-
-              // ─── RIGHT RED PANEL ──────────────────────────────────────────
               Positioned(
                 left: 20,
                 right: 0,
@@ -150,8 +181,6 @@ class _MainScreenState extends State<MainScreen> {
                 bottom: 0,
                 child: Container(color: navGreen),
               ),
-
-              // ─── NAV CONTENT, INSET 16PX FROM LEFT ────────────────────────
               Positioned.fill(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16.0),
@@ -166,7 +195,6 @@ class _MainScreenState extends State<MainScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // MENU
                         Flexible(
                           flex: 1,
                           child: Builder(
@@ -187,16 +215,14 @@ class _MainScreenState extends State<MainScreen> {
                                 ),
                           ),
                         ),
-
-                        // DISCUSSION
                         Flexible(
                           flex: 1,
                           child: GestureDetector(
                             onTap:
                                 () => setState(() {
-                                  if (_currentPage == 1) {
+                                  if (_currentPage == 1)
                                     _currentPage = 5;
-                                  } else if (_currentPage == 5)
+                                  else if (_currentPage == 5)
                                     _currentPage = 6;
                                   else
                                     _currentPage = 1;
@@ -205,7 +231,6 @@ class _MainScreenState extends State<MainScreen> {
                               color: navRed,
                               alignment: Alignment.center,
                               child: Image.asset(
-                                // ← swapped to conditional asset path
                                 _currentPage == 1
                                     ? 'assets/images/w_discussion.png'
                                     : _currentPage == 5
@@ -217,18 +242,14 @@ class _MainScreenState extends State<MainScreen> {
                             ),
                           ),
                         ),
-
-                        // TITLE
                         Flexible(
                           flex: 3,
                           child: GestureDetector(
-                            // Added
                             onTap:
                                 () => setState(() {
-                                  // Added: same toggle logic
-                                  if (_currentPage == 1) {
+                                  if (_currentPage == 1)
                                     _currentPage = 5;
-                                  } else if (_currentPage == 5)
+                                  else if (_currentPage == 5)
                                     _currentPage = 6;
                                   else
                                     _currentPage = 1;
@@ -251,16 +272,14 @@ class _MainScreenState extends State<MainScreen> {
                             ),
                           ),
                         ),
-
                         Flexible(
-                          flex: 3, // covers the space of 3 icons
+                          flex: 3,
                           child: Container(
-                            color: navGreen, // one shared background
+                            color: navGreen,
                             alignment: Alignment.center,
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // LEARNING LIST
                                 GestureDetector(
                                   onTap: () => setState(() => _currentPage = 2),
                                   child: Image.asset(
@@ -270,9 +289,7 @@ class _MainScreenState extends State<MainScreen> {
                                     colorBlendMode: BlendMode.srcIn,
                                   ),
                                 ),
-
-                                SizedBox(width: 10), // fixed gap
-                                // FAVORITES
+                                SizedBox(width: 10),
                                 GestureDetector(
                                   onTap: () => setState(() => _currentPage = 3),
                                   child: Image.asset(
@@ -282,9 +299,7 @@ class _MainScreenState extends State<MainScreen> {
                                     colorBlendMode: BlendMode.srcIn,
                                   ),
                                 ),
-
-                                SizedBox(width: 10), // fixed gap
-                                // HISTORY
+                                SizedBox(width: 10),
                                 GestureDetector(
                                   onTap: () => setState(() => _currentPage = 4),
                                   child: Image.asset(
@@ -335,6 +350,10 @@ class _TextPageState extends State<TextPage> {
     if (next == other) next = all[(idx + 2) % all.length];
     return next;
   }
+
+  final GlobalKey _leftLangKey = GlobalKey();
+  final GlobalKey _rightLangKey = GlobalKey();
+  final GlobalKey _micKey = GlobalKey();
 
   // 5) Map each enum to its flag asset path
   String _flagAsset(Language lang) {
@@ -978,13 +997,33 @@ class ImagePlaceholderPage extends StatefulWidget {
 }
 
 class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
+  // ─── Split/drag state ───────────────────────────────────────
   double _splitRatio = 0.5;
   static const double _dividerH = 10.0;
-  static const double _minTopPanel = 400.0; // top box can’t shrink below 800px
-  static const double _minBotPanel = 100.0; // bottom box keeps its 20px min
+  static const double _minTopPanel = 400.0;
+  static const double _minBotPanel = 100.0;
 
+  // ─── Placeholder text & toggles ────────────────────────────
+  static const String _placeholderText =
+      'Szeretnék elmenni a vasútállomásra, de nem ismerem az utat. '
+      'Hová kell mennem';
   bool _zoomable = false;
   bool _interpretMode = false;
+
+  // ─── Scroll controller for the bottom text area ─────────────
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -999,20 +1038,15 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // ─── Panels + Divider ────────────────────────────
+          // ─── Top & Bottom panels separated by draggable divider ───
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // total available height for both panels + divider
                 final totalH = constraints.maxHeight;
-
-                // clamp total so top≥_minTopPanel and bottom≥_minBotPanel
                 final usable = (totalH - _dividerH).clamp(
                   _minTopPanel + _minBotPanel,
                   totalH - _dividerH,
                 );
-
-                // top height between its min and whatever remains for bottom
                 final topH = (_splitRatio * usable).clamp(
                   _minTopPanel,
                   usable - _minBotPanel,
@@ -1021,7 +1055,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
                 return Column(
                   children: [
-                    // ─── Top panel with camera + upload prompt ───────────────────
+                    // ─── Top panel ──────────────────────────────
                     SizedBox(
                       width: boxW,
                       height: topH,
@@ -1034,16 +1068,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // big camera icon, default color
-                            Icon(
-                              Icons.camera_alt,
-                              size: 200,
-                              // no color override, so it uses the icon theme / actual multi-color glyph
-                            ),
-
+                            const Icon(Icons.camera_alt, size: 200),
                             const SizedBox(height: 1),
-
-                            // padded, navRed prompt text
                             Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 2.0,
@@ -1054,18 +1080,18 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     fontSize: 25,
                                     color: navRed,
                                   ),
-                                  children: [
-                                    const TextSpan(
+                                  children: const [
+                                    TextSpan(
                                       text: 'CLICK TO TAKE A PHOTO OR\n',
                                     ),
                                     TextSpan(
                                       text: 'LOAD UP FROM',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         decoration: TextDecoration.underline,
                                       ),
                                     ),
-                                    const TextSpan(text: ' YOUR DEVICE.'),
+                                    TextSpan(text: ' YOUR DEVICE.'),
                                   ],
                                 ),
                                 textAlign: TextAlign.center,
@@ -1076,12 +1102,11 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       ),
                     ),
 
-                    // ── Divider ──
+                    // ─── Draggable divider ────────────────────
                     GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onPanUpdate:
                           (d) => setState(() {
-                            // clamp newTop between its min and what's left for bottom
                             final newTop = (topH + d.delta.dy).clamp(
                               _minTopPanel,
                               usable - _minBotPanel,
@@ -1102,19 +1127,39 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       ),
                     ),
 
-                    // ── Bottom panel ──
+                    // ─── Bottom panel with multi-stage autosize text & scrollbar ─────
                     SizedBox(
                       width: boxW,
                       height: bottomH,
                       child: LayoutBuilder(
                         builder: (context, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
+                          final panelW = panelConstraints.maxWidth;
                           final iconSize = (panelH * 0.15).clamp(16.0, 32.0);
-                          final fontSize = 20.0;
+                          const iconRowHeight = 48.0;
+                          final availableH = panelH - iconRowHeight - 16;
+
+                          // pick the largest font that fits
+                          final sizes = [40.0, 35.0, 30.0, 25.0];
+                          double chosenSize = sizes.last;
+                          for (final s in sizes) {
+                            final tp = TextPainter(
+                              text: TextSpan(
+                                text: _placeholderText,
+                                style: TextStyle(fontSize: s),
+                              ),
+                              textDirection: TextDirection.ltr,
+                              maxLines: null,
+                            )..layout(maxWidth: panelW);
+                            if (tp.height <= availableH) {
+                              chosenSize = s;
+                              break;
+                            }
+                          }
 
                           return Stack(
                             children: [
-                              // background
+                              // white background
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
@@ -1126,23 +1171,29 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                 ),
                               ),
 
-                              // scaled text
+                              // autosized text with scrollbar
                               Positioned(
                                 top: 16,
                                 left: 16,
                                 right: 16,
-                                child: Text(
-                                  'Szeretnék elmenni a vasútállomásra, de nem ismerem az utat. Hová kell mennem, és mennyi idôbe telik az ut?',
-                                  textAlign: TextAlign.start,
-                                  style: GoogleFonts.robotoCondensed(
-                                    fontSize: fontSize,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black,
+                                bottom: iconRowHeight + 8,
+                                child: Scrollbar(
+                                  controller: _scrollController,
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    controller: _scrollController,
+                                    child: Text(
+                                      _placeholderText,
+                                      style: GoogleFonts.robotoCondensed(
+                                        fontSize: chosenSize,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
 
-                              // icons row…
+                              // icon row
                               Positioned(
                                 bottom: 8,
                                 left: 16,
@@ -1211,15 +1262,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
           const SizedBox(height: 10),
 
-          // ─── Language switcher ───────────────────────────
+          // ─── Language switcher ─────────────────────────────────
           SizedBox(
             width: switcherW,
             height: switcherH,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // DE label
                 Text(
                   'DE',
                   style: GoogleFonts.roboto(
@@ -1229,32 +1278,24 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-
-                // German flag
                 Image.asset(
                   'assets/flags/DE_BW_LS.png',
                   width: flagSize,
                   height: flagSize,
                 ),
                 const SizedBox(width: 25),
-
-                // Switch icon
                 Image.asset(
                   'assets/images/switch.png',
                   width: switchSize,
                   height: switchSize,
                 ),
                 const SizedBox(width: 25),
-
-                // Hungarian flag
                 Image.asset(
                   'assets/flags/HU_BW_LS.png',
                   width: flagSize,
                   height: flagSize,
                 ),
                 const SizedBox(width: 8),
-
-                // HU label
                 Text(
                   'HU',
                   style: GoogleFonts.roboto(
@@ -1284,58 +1325,53 @@ class HistoryPage extends StatefulWidget {
     },
     {
       'source':
-          'Honey never spoils because of its natural composition and low moisture content.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Honig verdirbt niemals aufgrund seiner natürlichen Zusammensetzung und niedrigen Feuchtigkeit.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'A macskák nagyon kíváncsiak és szeretnek felfedezni minden zugot a házban.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Katzen sind sehr neugierig und erkunden gerne jeden Winkel des Hauses.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'The Eiffel Tower is 300 meters tall and glitters with lights every evening.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Der Eiffelturm ist 300 Meter hoch und funkelt jeden Abend mit Lichtern.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'Az erdei séta frissítő élmény volt, madárcsicsergés és friss levegő vett körül.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Der Waldspaziergang war erfrischend mit Vogelgezwitscher und frischer Luft.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'Water boils at 100°C under standard atmospheric pressure conditions.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Wasser kocht bei 100°C unter normalen atmosphärischen Druckbedingungen.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'A naplemente gyönyörű a tengerparton, a narancs és rózsaszín árnyalatok csodásak.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Der Sonnenuntergang am Strand ist wunderschön mit orange-rosa Farbtönen.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'The Amazon rainforest produces 20% of the world’s oxygen and hosts diverse species.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Der Amazonas-Regenwald produziert 20% des Sauerstoffs der Welt und beherbergt viele Arten.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
     {
       'source':
-          'Csokoládé fogyasztása boldogsághormonokat szabadít fel az agyban, ami jó érzést kelt.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Schokolade setzt Glückshormone im Gehirn frei und vermittelt ein gutes Gefühl.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
-    {
-      'source':
-          'English is spoken by over 1.5 billion people worldwide as a native or second language.',
-      'translation':
-          'Englisch wird weltweit von über 1,5 Milliarden Menschen als Muttersprache oder Zweitsprache gesprochen.',
-    },
+    // … your other items …
   ];
 
   @override
@@ -1352,13 +1388,13 @@ class _HistoryPageState extends State<HistoryPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Search bar
+            // search bar
             TextField(
               decoration: InputDecoration(
                 hintText: 'Search history...',
-                prefixIcon: Icon(Icons.search),
-                suffixIcon: Icon(Icons.mic, color: Colors.black),
-                contentPadding: EdgeInsets.symmetric(
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: const Icon(Icons.mic, color: Colors.black),
+                contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 0,
                 ),
@@ -1368,13 +1404,15 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // Scrollable list
+
+            // scrollable list
             Expanded(
               child: ListView.builder(
                 itemCount: HistoryPage.translations.length,
                 itemBuilder: (context, index) {
                   final item = HistoryPage.translations[index];
                   final isFav = _favoritedIndices.contains(index);
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
@@ -1391,6 +1429,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                     child: Stack(
                       children: [
+                        // text
                         Padding(
                           padding: const EdgeInsets.only(right: 40),
                           child: Column(
@@ -1419,6 +1458,8 @@ class _HistoryPageState extends State<HistoryPage> {
                             ],
                           ),
                         ),
+
+                        // star toggle
                         Positioned(
                           top: 0,
                           right: 0,
@@ -1437,7 +1478,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                   content: Text(
                                     isFav
                                         ? 'Removed from favorites'
-                                        : 'Saved to favorite',
+                                        : 'Saved to favorites',
                                   ),
                                 ),
                               );
@@ -1445,8 +1486,8 @@ class _HistoryPageState extends State<HistoryPage> {
                             child: Padding(
                               padding: const EdgeInsets.all(4),
                               child: Icon(
-                                isFav ? Icons.favorite : Icons.favorite_border,
-                                color: isFav ? navRed : Colors.grey,
+                                isFav ? Icons.star : Icons.star_border,
+                                color: isFav ? gold : Colors.grey,
                               ),
                             ),
                           ),
@@ -1467,31 +1508,37 @@ class _HistoryPageState extends State<HistoryPage> {
 class FavoritePage extends StatelessWidget {
   const FavoritePage({super.key});
 
-  // 4 sample “favorite” translations
   static const List<Map<String, String>>
   favoriteTranslations = <Map<String, String>>[
-    <String, String>{
+    {
       'source':
           'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
           'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
-    <String, String>{
-      'source': 'Honey never spoils even after thousands of years.',
-      'translation':
-          'Honig verdirbt niemals, selbst nach Tausenden von Jahren.',
-    },
-    <String, String>{
+    {
       'source':
-          'A macskák nagyon kíváncsiak és szeretnek felfedezni új helyeket.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Katzen sind sehr neugierig und lieben es, neue Orte zu erkunden.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
-    <String, String>{
+    {
       'source':
-          'The Eiffel Tower is 300 meters tall and lights up every night.',
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
       'translation':
-          'Der Eiffelturm ist 300 Meter hoch und leuchtet jede Nacht.',
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
+    },
+    {
+      'source':
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
+      'translation':
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
+    },
+    {
+      'source':
+          'A dunai hajókirándulás lenyűgöző volt és felejthetetlen élményt nyújtott.',
+      'translation':
+          'Die Donauschifffahrt war beeindruckend und unvergesslich.',
     },
   ];
 
@@ -1502,7 +1549,7 @@ class FavoritePage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // search bar with black mic
+            // search bar
             TextField(
               decoration: InputDecoration(
                 hintText: 'Search favorites...',
@@ -1518,7 +1565,8 @@ class FavoritePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            // 4-item scrollable list
+
+            // favorites list
             Expanded(
               child: ListView.builder(
                 itemCount: favoriteTranslations.length,
@@ -1538,31 +1586,38 @@ class FavoritePage extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        // source text (navGreen), max 2 lines
-                        Text(
-                          item['source']!,
-                          style: const TextStyle(
-                            color: navGreen,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['source']!,
+                                style: const TextStyle(
+                                  color: navGreen,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item['translation']!,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 14,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 6),
-                        // translation text (black), max 2 lines
-                        Text(
-                          item['translation']!,
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 14,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        const SizedBox(width: 8),
+                        // gold star indicator
+                        const Icon(Icons.star, color: gold, size: 24),
                       ],
                     ),
                   );

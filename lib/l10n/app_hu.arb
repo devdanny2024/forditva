@@ -1,0 +1,15 @@
+{
+  "@@locale": "hu",
+  "title": "Fordító",
+    "menu": "Menü",
+  "conversation": "Beszélgetés",
+  "learningList": "Tanulási lista",
+  "favorites": "Kedvencek",
+  "history": "Előzmények",
+  "helpSupport": "Súgó & Támogatás",
+  "settings": "Beállítások",
+    "documentMode": "Dokumentum",
+  "imageMode": "Kép",
+  "licenseCredit": "Licenc & Kredit",
+  "searchHint": "Keresés…"
+}

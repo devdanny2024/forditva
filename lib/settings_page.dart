@@ -8,14 +8,33 @@ const List<String> _languages = ['Deutsch', 'English', 'Magyar'];
 const List<String> _themes = ['Classic', 'Ocean Blue', 'Forest Green'];
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final void Function(Locale) onLocaleChanged;
+
+  const SettingsPage({super.key, required this.onLocaleChanged});
 
   @override
   _SettingsPageState createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _selectedLanguage = _languages[1]; // English by default
+  late String _selectedLanguage;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final localeCode =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+
+    if (localeCode == 'de') {
+      _selectedLanguage = 'Deutsch';
+    } else if (localeCode == 'hu') {
+      _selectedLanguage = 'Magyar';
+    } else {
+      _selectedLanguage = 'English';
+    }
+  }
+
   String _selectedTheme = _themes[0]; // Classic by default
   bool _saveHistory = true; // default On
 
@@ -88,7 +107,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onChanged: (val) => setState(() => _selectedLanguage = val!),
+            onChanged: (val) {
+              setState(() => _selectedLanguage = val!);
+              if (val == 'Deutsch') {
+                widget.onLocaleChanged(const Locale('de'));
+              } else if (val == 'Magyar') {
+                widget.onLocaleChanged(const Locale('hu'));
+              } else {
+                widget.onLocaleChanged(const Locale('en'));
+              }
+
+              // Close the settings page so rebuild happens at root
+              Navigator.of(context).pop();
+            },
           ),
 
           const SizedBox(height: 24),

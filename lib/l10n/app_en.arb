@@ -1,0 +1,15 @@
+{
+  "@@locale": "en",
+  "title": "Forditva",
+    "menu": "Menu",
+  "conversation": "Conversation",
+  "learningList": "Learning List",
+  "favorites": "Favorites",
+  "history": "History",
+  "helpSupport": "Help & Support",
+  "settings": "Settings",
+  "licenseCredit": "License & Credit",
+  "searchHint": "Search...",
+  "documentMode": "Document",
+  "imageMode": "Image"
+}
