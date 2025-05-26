@@ -1,15 +1,17 @@
 {
   "@@locale": "de",
   "title": "Taalvertaler",
-    "menu": "Menü",
-  "conversation": "Gesprek",
-  "learningList": "Leerlijst",
-  "favorites": "Favorieten",
-  "history": "Geschiedenis",
-  "helpSupport": "Help & Ondersteuning",
-  "settings": "Instellingen",
-    "documentMode": "Dokument",
-  "imageMode": "Bild",
-  "licenseCredit": "Licentie & Credits",
-  "searchHint": "Zoeken…"
+  "menu": "Menü",
+  "conversation": "Gespräch",
+  "learningList": "Leerliste",
+  "favorites": "Favoriten",
+  "history": "Geschichte",
+  "helpSupport": "Hilfe & Unterstützung",
+  "settings": "Einstellungen",
+  "licenseCredit": "Lizenz & Credits",
+  "searchHint": "Suchen…",
+  "inputPlaceholder": "Was möchten Sie heute übersetzen?",
+  "outputPlaceholder": "Die Übersetzung erscheint hier.",
+  "documentMode": "Dokument",
+  "imageMode": "Bild"
 }

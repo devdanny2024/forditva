@@ -1,15 +1,17 @@
 {
   "@@locale": "hu",
   "title": "Fordító",
-    "menu": "Menü",
+  "menu": "Menü",
   "conversation": "Beszélgetés",
   "learningList": "Tanulási lista",
   "favorites": "Kedvencek",
   "history": "Előzmények",
   "helpSupport": "Súgó & Támogatás",
   "settings": "Beállítások",
-    "documentMode": "Dokumentum",
-  "imageMode": "Kép",
   "licenseCredit": "Licenc & Kredit",
-  "searchHint": "Keresés…"
+  "searchHint": "Keresés…",
+  "inputPlaceholder": "Mit szeretne ma lefordítani?",
+  "outputPlaceholder": "A fordítás itt fog megjelenni.",
+  "documentMode": "Dokumentum",
+  "imageMode": "Kép"
 }

@@ -1,7 +1,7 @@
 {
   "@@locale": "en",
   "title": "Forditva",
-    "menu": "Menu",
+  "menu": "Menu",
   "conversation": "Conversation",
   "learningList": "Learning List",
   "favorites": "Favorites",
@@ -10,6 +10,8 @@
   "settings": "Settings",
   "licenseCredit": "License & Credit",
   "searchHint": "Search...",
+  "inputPlaceholder": "What would you like to translate today?",
+  "outputPlaceholder": "Translation will appear here.",
   "documentMode": "Document",
   "imageMode": "Image"
 }

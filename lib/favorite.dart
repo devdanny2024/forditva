@@ -1,0 +1,138 @@
+import 'package:flutter/material.dart';
+import 'package:forditva/db/database.dart'; // adjust path if needed
+import 'package:google_fonts/google_fonts.dart';
+
+const Color textGrey = Color(0xFF898888);
+const Color navGreen = Color(0xFF436F4D);
+const Color gold = Colors.amber;
+
+class FavoritePage extends StatefulWidget {
+  const FavoritePage({super.key});
+
+  @override
+  _FavoritePageState createState() => _FavoritePageState();
+}
+
+class _FavoritePageState extends State<FavoritePage> {
+  late final AppDatabase _db;
+  late Future<List<Translation>> _favoritesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _db = AppDatabase();
+    _loadFavorites();
+  }
+
+  void _loadFavorites() {
+    _favoritesFuture = _db.translationDao.getAll().then(
+      (all) => all.where((e) => e.isFavorite).toList(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _db.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: textGrey,
+      appBar: AppBar(title: const Text('Favorites')),
+      body: FutureBuilder<List<Translation>>(
+        future: _favoritesFuture,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final list = snap.data ?? [];
+          if (list.isEmpty) {
+            return const Center(
+              child: Text(
+                'No favorites yet.',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: ListView.builder(
+              itemCount: list.length,
+              itemBuilder: (ctx, i) {
+                final entry = list[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Texts
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.input,
+                              style: GoogleFonts.robotoCondensed(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: navGreen,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              entry.output,
+                              style: GoogleFonts.robotoCondensed(
+                                fontSize: 14,
+                                color: Colors.black,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Interactive unfavorite star
+                      IconButton(
+                        icon: const Icon(Icons.star, color: gold, size: 24),
+                        onPressed: () async {
+                          // Toggle off favorite
+                          await _db.translationDao.toggleFavorite(
+                            entry.id,
+                            false,
+                          );
+                          // Reload the filtered favorites list
+                          setState(_loadFavorites);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Removed from favorites'),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
