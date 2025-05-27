@@ -121,11 +121,26 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   void _onInputChanged() {
+    // Cancel any pending translation
     if (_debounce?.isActive ?? false) _debounce?.cancel();
+
+    // Immediately clear the old translation and show the "Translating…" text
+    setState(() {
+      _translatedText = '';
+      _isTranslating = true;
+    });
+
+    // Wait 1 second after the last keystroke, then actually translate
     _debounce = Timer(const Duration(seconds: 1), () {
       final currentText = _inputController.text.trim();
+
       if (currentText.isNotEmpty) {
         _translateText(currentText);
+      } else {
+        // No input → stop the translating indicator
+        setState(() {
+          _isTranslating = false;
+        });
       }
     });
   }

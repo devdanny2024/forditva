@@ -63,4 +63,13 @@ class GeminiTranslator {
       yield full[i];
     }
   }
+
+  Future<String> detectLanguage(String inputText) async {
+    final prompt = '''
+Detect the language of the following text and reply with exactly the ISO 639-1 code (two uppercase letters), no other words:
+$inputText
+''';
+    final response = await _model.generateContent([Content.text(prompt)]);
+    return response.text?.trim().toUpperCase() ?? '';
+  }
 }

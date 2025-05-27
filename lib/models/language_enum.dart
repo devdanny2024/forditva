@@ -1,5 +1,10 @@
 enum Language { hungarian, german, english }
 
+extension LanguageCode on Language {
+  /// two‐letter code for external APIs:
+  String get code => label;
+}
+
 extension LanguageExtension on Language {
   String get label {
     switch (this) {

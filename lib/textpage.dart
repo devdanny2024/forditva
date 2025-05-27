@@ -1,7 +1,12 @@
 import 'dart:math' as math; // ← Add this at the top of your file
 
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:forditva/models/language_enum.dart';
+import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:google_fonts/google_fonts.dart';
+
+import 'RecordingPage.dart'; // correct path & casing
 
 // Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
@@ -9,7 +14,30 @@ const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
 const Color gold = Colors.amber;
 
-enum Language { hungarian, german, english }
+String _flagAsset(Language lang) {
+  switch (lang) {
+    case Language.hungarian:
+      return 'assets/flags/HU_BB.png';
+    case Language.german:
+      return 'assets/flags/DE_BW.png';
+    case Language.english:
+      return 'assets/flags/EN_BW.png';
+  }
+}
+
+extension LanguageRecordingText on Language {
+  String get beginRecording {
+    switch (this) {
+      case Language.hungarian:
+        return 'Kezdje a felvételt…';
+      case Language.german:
+        return 'Beginnen Sie die Aufnahme…';
+      case Language.english:
+      default:
+        return 'Begin recording…';
+    }
+  }
+}
 
 class TextPage extends StatefulWidget {
   const TextPage({super.key});
@@ -20,9 +48,53 @@ class TextPage extends StatefulWidget {
 
 /// ==================== TextPage ====================
 class _TextPageState extends State<TextPage> {
-  final Map<Language, String> _leftTranslations = {};
-  final Map<Language, String> _rightTranslations = {};
+  final TextEditingController _inputController = TextEditingController();
 
+  // ▶︎ what we spoke (bottom card)
+  final String _transcript = '';
+  // ▶︎ what Gemini translated (top card)
+  String _translation = '';
+  // ▶︎ spinner while Gemini runs
+  bool _isTranslating = false;
+  // ▶︎ your Gemini client
+  final GeminiTranslator _gemini = GeminiTranslator();
+  // ▶︎ map your Language enum into its two-letter codes
+  final Map<Language, String> _langLabels = {
+    Language.hungarian: 'HU',
+    Language.german: 'DE',
+    Language.english: 'EN',
+  };
+  Future<void> _openRecording() async {
+    final transcript = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder:
+            (_) =>
+                RecordingPage(fromLang: _leftLanguage, toLang: _rightLanguage),
+      ),
+    );
+
+    // if user cancelled or empty
+    if (transcript == null || transcript.isEmpty) return;
+
+    setState(() {
+      _inputController.text = transcript;
+      _isTranslating = true;
+    });
+
+    // perform Gemini translation
+    final geminiResult = await _gemini.translate(
+      transcript,
+      _leftLanguage.code,
+      _rightLanguage.code,
+    );
+
+    setState(() {
+      _translation = geminiResult;
+      _isTranslating = false;
+    });
+  }
+
+  late final FlutterTts _flutterTts;
   // 3) State fields for left/right languages
   Language _leftLanguage = Language.hungarian;
   Language _rightLanguage = Language.german;
@@ -39,6 +111,28 @@ class _TextPageState extends State<TextPage> {
   final GlobalKey _leftLangKey = GlobalKey();
   final GlobalKey _rightLangKey = GlobalKey();
   final GlobalKey _micKey = GlobalKey();
+  @override
+  void initState() {
+    super.initState();
+    // existing init...
+    _flutterTts = FlutterTts();
+    _flutterTts
+      ..setSpeechRate(0.5)
+      ..setVolume(1.0)
+      ..setPitch(1.0);
+  }
+
+  Future<void> _speak(String text, Language lang) async {
+    // pick locale string
+    final locale =
+        lang == Language.hungarian
+            ? 'hu-HU'
+            : lang == Language.german
+            ? 'de-DE'
+            : 'en-US';
+    await _flutterTts.setLanguage(locale);
+    await _flutterTts.speak(text);
+  }
 
   // 5) Map each enum to its flag asset path
   String _flagAsset(Language lang) {
@@ -64,26 +158,9 @@ class _TextPageState extends State<TextPage> {
     }
   }
 
-  String _pairLabelAsset(Language from, Language to) {
-    if (from == Language.hungarian && to == Language.english) {
-      return 'assets/images/HU-EN.png';
-    }
-    if (from == Language.hungarian && to == Language.german) {
-      return 'assets/images/HU-DE.png';
-    }
-    if (from == Language.german && to == Language.english) {
-      return 'assets/images/DE-EN.png';
-    }
-    if (from == Language.german && to == Language.hungarian) {
-      return 'assets/images/DE-HU.png';
-    }
-    if (from == Language.english && to == Language.german) {
-      return 'assets/images/EN-DE.png';
-    }
-    if (from == Language.english && to == Language.hungarian) {
-      return 'assets/images/EN-HU.png';
-    }
-    return ''; // fallback
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
@@ -93,7 +170,10 @@ class _TextPageState extends State<TextPage> {
         final switchSize = 70.0;
         final flagSize = 24.0;
         final halfH = constraints.maxHeight / 2;
-
+        // 2) Inside your build, get the UI language code:
+        final uiLangCode =
+            Localizations.localeOf(context).languageCode.toUpperCase();
+        // e.g. 'en','de','hu' → 'EN','DE','HU'
         return Stack(
           children: [
             // Input card
@@ -102,7 +182,12 @@ class _TextPageState extends State<TextPage> {
               left: 16,
               right: 16,
               height: halfH + switchSize / 2,
-              child: TranslationInputCard(),
+              child: TranslationInputCard(
+                fromLang: _leftLanguage,
+                toLang: _rightLanguage,
+                text: _translation,
+                isBusy: _isTranslating,
+              ),
             ),
             // Left overlay
             Positioned(
@@ -126,7 +211,12 @@ class _TextPageState extends State<TextPage> {
               left: 16,
               right: 16,
               height: halfH + switchSize / 2,
-              child: TranslationOutputCard(),
+              child: TranslationOutputCard(
+                toLang: _rightLanguage,
+                fromLang: _leftLanguage,
+                text: _transcript,
+                onMicTap: _openRecording,
+              ),
             ),
             // Right overlay
             Positioned(
@@ -158,7 +248,7 @@ class _TextPageState extends State<TextPage> {
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
-                        padding: const EdgeInsets.only(left: 20.0),
+                        padding: const EdgeInsets.only(left: 10.0),
                         child: GestureDetector(
                           onTap:
                               () => setState(() {
@@ -178,9 +268,9 @@ class _TextPageState extends State<TextPage> {
                                   fit: BoxFit.cover,
                                 ),
                               ),
-                              SizedBox(width: 10),
+                              SizedBox(width: 5),
                               Image.asset(
-                                _pairLabelAsset(_leftLanguage, _rightLanguage),
+                                'assets/images/${_leftLanguage.code}-$uiLangCode.png',
                                 height: flagSize,
                                 fit: BoxFit.contain,
                               ),
@@ -190,24 +280,32 @@ class _TextPageState extends State<TextPage> {
                       ),
                     ),
 
-                    // Center switch
                     Center(
-                      child: Container(
-                        width: switchSize,
-                        height: switchSize,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black26, blurRadius: 4),
-                          ],
-                          border: Border.all(color: Colors.black, width: 2),
-                        ),
-                        child: Center(
-                          child: Image.asset(
-                            'assets/images/switch.png',
-                            width: switchSize * 0.6,
-                            height: switchSize * 0.6,
+                      child: GestureDetector(
+                        onTap:
+                            () => setState(() {
+                              // swap the two languages (this will re-render both cards accordingly)
+                              final tmp = _leftLanguage;
+                              _leftLanguage = _rightLanguage;
+                              _rightLanguage = tmp;
+                            }),
+                        child: Container(
+                          width: switchSize,
+                          height: switchSize,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black26, blurRadius: 4),
+                            ],
+                            border: Border.all(color: Colors.black, width: 2),
+                          ),
+                          child: Center(
+                            child: Image.asset(
+                              'assets/images/switch.png',
+                              width: switchSize * 0.6,
+                              height: switchSize * 0.6,
+                            ),
                           ),
                         ),
                       ),
@@ -217,13 +315,14 @@ class _TextPageState extends State<TextPage> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: Padding(
-                        padding: const EdgeInsets.only(right: 20.0, bottom: 8),
+                        padding: const EdgeInsets.only(right: 10.0, bottom: 8),
                         child: GestureDetector(
                           onTap:
                               () => setState(() {
+                                // Skip whatever the left side is and advance _rightLanguage to the next
                                 _rightLanguage = _nextLanguage(
-                                  _rightLanguage,
-                                  _leftLanguage,
+                                  _rightLanguage, // start from current right
+                                  _leftLanguage, // skip the left one
                                 );
                               }),
                           child: Row(
@@ -241,14 +340,11 @@ class _TextPageState extends State<TextPage> {
                                   ),
                                 ),
                               ),
-                              SizedBox(width: 10),
+                              SizedBox(width: 5),
                               RotatedBox(
                                 quarterTurns: 2,
                                 child: Image.asset(
-                                  _pairLabelAsset(
-                                    _rightLanguage,
-                                    _leftLanguage,
-                                  ),
+                                  'assets/images/${_rightLanguage.code}-$uiLangCode.png',
                                   height: flagSize,
                                   fit: BoxFit.contain,
                                 ),
@@ -270,8 +366,17 @@ class _TextPageState extends State<TextPage> {
 }
 
 class TranslationInputCard extends StatelessWidget {
-  const TranslationInputCard({super.key});
-
+  final Language fromLang;
+  final Language toLang;
+  final String text;
+  final bool isBusy;
+  const TranslationInputCard({
+    super.key,
+    required this.fromLang,
+    required this.toLang,
+    required this.text,
+    required this.isBusy,
+  });
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -284,20 +389,24 @@ class TranslationInputCard extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Padding(
-            padding: EdgeInsets.all(32), //
+            padding: EdgeInsets.all(32),
             child: RotatedBox(
               quarterTurns: 2,
-              child: Text(
-                'Ich muss wissen, wie ich zum Bahnhof komme.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.roboto(
-                  fontWeight: FontWeight.w500, // Medium
-                  fontSize: 30,
-                  color: Colors.white,
-                ),
-              ),
+              child:
+                  isBusy
+                      ? const CircularProgressIndicator()
+                      : Text(
+                        text.isNotEmpty ? text : toLang.beginRecording,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.roboto(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 30,
+                          color: Colors.white,
+                        ),
+                      ),
             ),
           ),
+
           Positioned(
             top: 9,
             child: Container(
@@ -305,7 +414,7 @@ class TranslationInputCard extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 image: DecorationImage(
-                  image: AssetImage('assets/flags/DE_BW.png'),
+                  image: AssetImage(_flagAsset(toLang)), // unchanged
                   fit: BoxFit.cover,
                 ),
               ),
@@ -368,7 +477,18 @@ class TranslationInputCard extends StatelessWidget {
 }
 
 class TranslationOutputCard extends StatelessWidget {
-  const TranslationOutputCard({super.key});
+  final Language fromLang;
+  final Language toLang;
+  final String text;
+  final Future<void> Function() onMicTap;
+
+  const TranslationOutputCard({
+    super.key,
+    required this.fromLang,
+    required this.toLang,
+    required this.text,
+    required this.onMicTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -382,11 +502,11 @@ class TranslationOutputCard extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Positioned(
-            top: 80, // ← distance from top of this Container
+            top: 80,
             left: 16,
             right: 16,
             child: Text(
-              'Tudom kell, hogyan megyek a vasútállomásra?',
+              text.isNotEmpty ? text : fromLang.beginRecording,
               textAlign: TextAlign.center,
               style: GoogleFonts.roboto(
                 fontWeight: FontWeight.w500,
@@ -395,26 +515,32 @@ class TranslationOutputCard extends StatelessWidget {
               ),
             ),
           ),
+
           Positioned(
             bottom: 43,
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage('assets/flags/HU_BB.png'),
-                  fit: BoxFit.cover,
+            child: GestureDetector(
+              onTap: onMicTap, // ← just call the passed-in callback
+
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage(_flagAsset(fromLang)), // unchanged
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
-              child: Center(
-                child: Image.asset(
-                  'assets/images/microphone-white-border.png',
-                  width: 40,
-                  height: 40,
+                child: Center(
+                  child: Image.asset(
+                    'assets/images/microphone-white-border.png',
+                    width: 40,
+                    height: 40,
+                  ),
                 ),
               ),
             ),
           ),
+
           Positioned(
             bottom: 43,
             left: 8,
