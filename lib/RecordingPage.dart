@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forditva/models/language_enum.dart';
-import 'package:forditva/services/gemini_translation_service.dart'; // ← your Gemini client
+import 'package:forditva/services/gemini_translation_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -22,25 +22,26 @@ class RecordingPage extends StatefulWidget {
 
 class _RecordingPageState extends State<RecordingPage>
     with SingleTickerProviderStateMixin {
-  List<stt.LocaleName> _locales = [];
-  String? _localeId;
-  bool _isRecording = false;
+  late final stt.SpeechToText _speech;
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnim;
-  late final stt.SpeechToText _speech;
+
+  List<stt.LocaleName> _locales = [];
+  String? _localeId;
   bool _speechAvailable = false;
-  bool _localeReady = false;
-  bool _ready = false;
-  final GeminiTranslator _gemini = GeminiTranslator();
+
+  bool _isRecording = false;
+  bool _continuousListening = false;
 
   final TextEditingController _textController = TextEditingController();
   String _fullTranscription = '';
+  final GeminiTranslator _gemini = GeminiTranslator();
 
   @override
   void initState() {
     super.initState();
 
-    // ← ADD THIS
+    // Pulse animation for the record button
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -48,53 +49,50 @@ class _RecordingPageState extends State<RecordingPage>
     _pulseAnim = Tween<double>(begin: 0.9, end: 1.1).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    // END ADD
 
+    // Initialize STT
     _speech = stt.SpeechToText();
     _speech.initialize(onStatus: _statusListener, onError: (_) {}).then((
-      avail,
+      available,
     ) {
-      setState(() => _speechAvailable = avail);
-      if (avail) {
-        _loadLocales().then((_) {
-          setState(() {
-            _localeReady = true;
-            _ready = true;
-          });
-        });
-      }
+      setState(() => _speechAvailable = available);
+      if (available) _loadLocales();
+    });
+
+    // If user taps into the text field, immediately stop recording
+    _textController.addListener(() {
+      if (_isRecording) _stopRecording();
     });
   }
 
   Future<void> _loadLocales() async {
     _locales = await _speech.locales();
-
-    // map our enum → locale prefix
     final map = {
       Language.english: 'en',
       Language.german: 'de',
       Language.hungarian: 'hu',
     };
-    final desiredPrefix = map[widget.fromLang]!;
-
+    final prefix = map[widget.fromLang]!;
     _localeId =
         _locales
             .firstWhere(
-              (l) => l.localeId.startsWith(desiredPrefix),
+              (l) => l.localeId.startsWith(prefix),
               orElse: () => _locales.first,
             )
             .localeId;
   }
 
   void _statusListener(String status) {
-    // The plugin has auto-stopped (e.g. user fell silent)
     if (status == 'notListening' && _isRecording) {
-      // Stop the pulsation
-      _pulseController.stop();
-      // Update the icon back to a mic
-      setState(() {
-        _isRecording = false;
-      });
+      if (_continuousListening) {
+        // restart both pulse & listening immediately
+        _pulseController.repeat(reverse: true);
+        _startListening();
+      } else {
+        // normal silence-stop
+        _pulseController.stop();
+        setState(() => _isRecording = false);
+      }
     }
   }
 
@@ -102,53 +100,61 @@ class _RecordingPageState extends State<RecordingPage>
     _speech.listen(
       onResult: (r) {
         final text = r.recognizedWords.trim();
-
-        if (r.finalResult) {
-          // Append the final chunk
-          _fullTranscription = '$_fullTranscription$text ';
-        }
-
-        // Show everything so far (full + interim)
+        if (r.finalResult) _fullTranscription += '$text ';
         setState(() {
           _textController.text =
               _fullTranscription + (r.finalResult ? '' : text);
         });
       },
       localeId: _localeId,
-      partialResults: true, // <-- allow interim updates
+      partialResults: true,
       listenMode: stt.ListenMode.dictation,
-      cancelOnError: false, // <-- keep going on transient errors
-      listenFor: const Duration(hours: 1), // <-- very long session
-      // pauseFor: remove entirely so silence doesn't auto-stop
+      cancelOnError: false,
+      // In continuous mode, never auto-stop for up to 24h
+      listenFor:
+          _continuousListening
+              ? const Duration(hours: 24)
+              : const Duration(hours: 1),
+      // Likewise, only auto-pause after 3s of silence in SILENCE mode
+      pauseFor:
+          _continuousListening
+              ? const Duration(hours: 24)
+              : const Duration(seconds: 3),
     );
   }
 
   void _toggleRecording() {
-    if (!_speechAvailable) return;
     if (!_speechAvailable || _localeId == null) return;
     setState(() => _isRecording = !_isRecording);
-
     if (_isRecording) {
       _pulseController.repeat(reverse: true);
       _startListening();
     } else {
-      _pulseController.stop();
+      _stopRecording();
+    }
+  }
+
+  void _toggleMode() {
+    setState(() => _continuousListening = !_continuousListening);
+    if (_isRecording) {
+      // restart with new params immediately
       _speech.stop();
+      _pulseController.repeat(reverse: true);
+      _startListening();
     }
   }
 
   void _stopRecording() {
     if (_isRecording) {
-      _pulseController.stop();
       _speech.stop();
+      _pulseController.stop();
       setState(() => _isRecording = false);
     }
   }
 
   @override
   void dispose() {
-    _stopRecording(); // ensure mic is off
-
+    _stopRecording();
     _pulseController.dispose();
     _speech.stop();
     _textController.dispose();
@@ -158,16 +164,16 @@ class _RecordingPageState extends State<RecordingPage>
   @override
   Widget build(BuildContext context) {
     final outlineColor = _isRecording ? recordingColor : gold;
-    final height = MediaQuery.of(context).size.height;
+    final h = MediaQuery.of(context).size.height;
 
     return Scaffold(
       body: Stack(
         children: [
           Column(
             children: [
-              // Top section: mic/pause toggle
+              // Top: big pulse-button
               SizedBox(
-                height: height * 0.3,
+                height: h * 0.3,
                 child: Center(
                   child: GestureDetector(
                     onTap: _toggleRecording,
@@ -197,9 +203,9 @@ class _RecordingPageState extends State<RecordingPage>
                 ),
               ),
 
-              // Middle section: at least 50% height for editable transcript
+              // Middle: transcript editor
               SizedBox(
-                height: height * 0.5,
+                height: h * 0.5,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Container(
@@ -211,8 +217,8 @@ class _RecordingPageState extends State<RecordingPage>
                       controller: _textController,
                       maxLines: null,
                       style: GoogleFonts.robotoCondensed(fontSize: 24),
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.all(12),
+                      decoration: const InputDecoration(
+                        contentPadding: EdgeInsets.all(12),
                         border: InputBorder.none,
                       ),
                     ),
@@ -220,94 +226,99 @@ class _RecordingPageState extends State<RecordingPage>
                 ),
               ),
 
-              // Bottom section: Translate button
+              // Bottom: mode toggle + translate
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: ElevatedButton(
-                  onPressed: () async {
-                    // 1️⃣ Show a simple full-screen loader
-                    if (_fullTranscription.trim().isEmpty) {
-                      Navigator.of(context).pop('');
-                      return;
-                    }
-                    final detectedCode = await _gemini.detectLanguage(
-                      _fullTranscription,
-                    );
-                    // normalize to two‐letter code, e.g. "EN","DE","HU"
-                    final expectedCode = widget.fromLang.code;
-
-                    if (detectedCode.toUpperCase() != expectedCode) {
-                      // mismatch → ask them to speak the right language
-                      showDialog(
-                        context: context,
-                        builder:
-                            (_) => AlertDialog(
-                              title: Text(
-                                'Wrong language',
-                                style: GoogleFonts.robotoCondensed(),
-                              ),
-                              content: Text(
-                                'Please speak in ${widget.fromLang.name}.',
-                                style: GoogleFonts.roboto(),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(context).pop(),
-                                  child: Text('OK'),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      tooltip:
+                          _continuousListening
+                              ? 'Continuous Listening'
+                              : 'Silence-auto-stop Mode',
+                      icon: Icon(
+                        _continuousListening ? Icons.mic : Icons.mic_off,
+                        size: 30,
+                      ),
+                      onPressed: _toggleMode,
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (_fullTranscription.trim().isEmpty) {
+                          Navigator.of(context).pop('');
+                          return;
+                        }
+                        final detected = await _gemini.detectLanguage(
+                          _fullTranscription,
+                        );
+                        if (detected.toUpperCase() != widget.fromLang.code) {
+                          return showDialog(
+                            context: context,
+                            builder:
+                                (_) => AlertDialog(
+                                  title: Text(
+                                    'Wrong language',
+                                    style: GoogleFonts.robotoCondensed(),
+                                  ),
+                                  content: Text(
+                                    'Please speak in ${widget.fromLang.name}.',
+                                    style: GoogleFonts.roboto(),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('OK'),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                      );
-                      return;
-                    }
-
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder:
-                          (_) =>
-                              const Center(child: CircularProgressIndicator()),
-                    );
-
-                    Navigator.of(context).pop(_fullTranscription.trim());
-
-                    // 2️⃣ Pop back, returning the transcript
-                    Navigator.of(context).pop(_fullTranscription);
-
-                    // 3️⃣ Loader will be dismissed by the caller
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: navGreen,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 36,
-                      vertical: 12,
+                          );
+                        }
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder:
+                              (_) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                        );
+                        Navigator.of(context).pop(_fullTranscription.trim());
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: navGreen,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 36,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Translate',
+                        style: GoogleFonts.robotoCondensed(
+                          fontSize: 18,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    'Translate',
-                    style: GoogleFonts.robotoCondensed(
-                      fontSize: 18,
-                      color: Colors.white,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ],
           ),
 
-          // Transparent X button to close
+          // Close button
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 16,
             child: GestureDetector(
               onTap: () {
-                _stopRecording(); // stop mic & animation
-                Navigator.of(context).pop(); // then close
+                _stopRecording();
+                Navigator.of(context).pop();
               },
-              child: Icon(Icons.close, size: 30),
+              child: const Icon(Icons.close, size: 30),
             ),
           ),
         ],

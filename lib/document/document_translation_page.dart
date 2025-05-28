@@ -10,7 +10,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart'; // for Share.share()
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-import '../services/gemini_translation_service.dart'; // adjust path if needed
+import '../services/gemini_translation_service.dart';
+import '../services/lingvanex_translation_service.dart';
 
 enum Language { hu, en, de }
 
@@ -36,6 +37,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   bool _isListening = false;
   final ScrollController _scrollController = ScrollController();
   final String _explanationText = '';
+  final LingvanexTranslationService _lingvanex = LingvanexTranslationService();
   final GeminiTranslator _gemini = GeminiTranslator();
   String _explanationLevel = 'A2'; // default level
   late final AppDatabase _db;
@@ -219,24 +221,47 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     });
   }
 
-  void _showExplanationModal(String explanation) {
-    String selectedLevel = _explanationLevel;
+  void _showExplanationModal(String initialExplanation) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) {
+        String explanationText = initialExplanation;
+        bool isLoading = false;
+
         return StatefulBuilder(
           builder: (context, setModalState) {
+            void fetchExplanation(String level) async {
+              setModalState(() => isLoading = true);
+              try {
+                final newExp = await _gemini.translate(
+                  _inputController.text.trim(),
+                  _langLabels[_leftLang]!,
+                  _langLabels[_rightLang]!,
+                  explain: true,
+                  level: level,
+                );
+                setModalState(() {
+                  explanationText = newExp;
+                });
+              } catch (_) {
+                setModalState(() {
+                  explanationText = 'Failed to load explanation.';
+                });
+              } finally {
+                setModalState(() => isLoading = false);
+              }
+            }
+
             return Dialog(
+              backgroundColor: Colors.white, // white background
               shape: RoundedRectangleBorder(
                 side: const BorderSide(width: 0.5, color: Colors.black),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight:
-                      MediaQuery.of(context).size.height *
-                      0.85, // adjust height
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -262,18 +287,18 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                       ),
                     ),
 
-                    // Body: scrollable
+                    // Body
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child:
-                            _isTranslating
+                            isLoading
                                 ? const Center(
                                   child: CircularProgressIndicator(),
                                 )
                                 : SingleChildScrollView(
                                   child: Text(
-                                    explanation,
+                                    explanationText,
                                     style: GoogleFonts.roboto(fontSize: 16),
                                   ),
                                 ),
@@ -282,28 +307,21 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
                     const Divider(thickness: 1),
 
-                    // Bottom level bar
+                    // Level selector
                     Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
                       color: Colors.grey[200],
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children:
-                            ['Level', 'A1', 'A2', 'B1'].map((level) {
-                              final isActive = _explanationLevel == level;
+                            ['A1', 'A2', 'B1'].map((level) {
+                              final active = _explanationLevel == level;
                               return GestureDetector(
                                 onTap: () {
-                                  if (level != 'Level') {
-                                    setModalState(
-                                      () => _explanationLevel = level,
-                                    );
-                                    setState(() => _explanationLevel = level);
-                                    final currentText =
-                                        _inputController.text.trim();
-                                    if (currentText.isNotEmpty) {
-                                      _translateText(currentText);
-                                    }
-                                  }
+                                  setModalState(
+                                    () => _explanationLevel = level,
+                                  );
+                                  fetchExplanation(level);
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
@@ -312,9 +330,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                        isActive
-                                            ? const Color(0xFFCD2A3E)
-                                            : null,
+                                        active ? const Color(0xFFCD2A3E) : null,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
@@ -323,9 +339,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                       fontWeight: FontWeight.w500,
                                       fontSize: 14,
                                       color:
-                                          isActive
-                                              ? Colors.white
-                                              : Colors.black,
+                                          active ? Colors.white : Colors.black,
                                     ),
                                   ),
                                 ),
@@ -353,9 +367,16 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     return next;
   }
 
+  /// Map our Language enum into Lingvanex’s `xx_XX` codes
+  String _lingvanexCode(Language lang) {
+    // reuse your existing _localeFor() which returns "en-US", "de-DE", etc.
+    return _localeFor(lang).replaceAll('-', '_');
+  }
+
   Future<void> _translateText(String input) async {
     final from = _langLabels[_leftLang]!;
     final to = _langLabels[_rightLang]!;
+    final String currentText = _inputController.text.trim();
 
     setState(() {
       _isTranslating = true;
@@ -363,14 +384,13 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     });
 
     try {
-      final result = await _gemini.translate(
-        input,
-        from,
-        to,
-        explain: _explain,
-        level: _explanationLevel,
+      final dynamic raw = await _lingvanex.translate(
+        data: currentText, // ← use currentText
+        fromLang: _lingvanexCode(_leftLang),
+        toLang: _lingvanexCode(_rightLang),
       );
-
+      final String result =
+          raw is List ? (raw).first.toString() : raw.toString();
       if (!mounted) return;
 
       if (_explain) {
@@ -415,7 +435,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     if (!mounted) return;
 
     Navigator.of(context).pop(); // Close the loader
-
     _showExplanationModal(explanation); // Show modal
   }
 
@@ -463,7 +482,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                         fontWeight: FontWeight.w500,
                       ),
                       decoration: InputDecoration.collapsed(
-                        hintText: _placeholderForLang(_leftLang),
+                        hintText: '',
                         hintStyle: GoogleFonts.robotoCondensed(
                           fontSize: 25,
                           color: Colors.grey,
@@ -538,9 +557,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                       child: Text(
                         _isTranslating
                             ? _translatingText(_rightLang)
-                            : (_translatedText.isEmpty
-                                ? _placeholderForLang(_rightLang)
-                                : _translatedText),
+                            : _translatedText,
                         style: GoogleFonts.robotoCondensed(
                           fontSize: 25,
                           fontWeight: FontWeight.w500,
@@ -626,18 +643,15 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                     _inputController.text.trim();
                                 if (currentText.isNotEmpty) {
                                   _showLoaderBeforeModal(() async {
-                                    final from = _langLabels[_leftLang]!;
-                                    final to = _langLabels[_rightLang]!;
-
                                     try {
-                                      final result = await _gemini.translate(
+                                      // Use Gemini for explanation
+                                      return await _gemini.translate(
                                         currentText,
-                                        from,
-                                        to,
+                                        _langLabels[_leftLang]!, // e.g. "EN"
+                                        _langLabels[_rightLang]!, // e.g. "DE"
                                         explain: true,
                                         level: _explanationLevel,
                                       );
-                                      return result;
                                     } catch (e) {
                                       debugPrint('Explanation error: $e');
                                       return 'Failed to load explanation.';

@@ -12,10 +12,10 @@ class LingvanexTranslationService {
   /// [translateMode]: 'plain' or 'html'.
   /// [enableTransliteration]: if true, includes transliteration fields in the response.
   Future<dynamic> translate({
-    dynamic data,
+    required dynamic data,
     String? fromLang,
     required String toLang,
-    String translateMode = 'plain',
+    String translateMode = 'text', // ← change from 'plain' to 'text'
     bool enableTransliteration = false,
   }) async {
     final uri = Uri.parse('$_baseUrl/translate');
@@ -23,11 +23,10 @@ class LingvanexTranslationService {
     final bodyMap = <String, dynamic>{
       'to': toLang,
       'data': data,
-      'translateMode': translateMode,
+      'translateMode': translateMode, // now valid
       'enableTransliteration': enableTransliteration,
       'platform': 'api',
     };
-
     if (fromLang != null && fromLang.isNotEmpty) {
       bodyMap['from'] = fromLang;
     }
@@ -41,22 +40,21 @@ class LingvanexTranslationService {
       body: jsonEncode(bodyMap),
     );
 
-    switch (response.statusCode) {
-      case 200:
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        return json['result'];
-      case 403:
-        throw LingvanexException(
-          'Authorization error: check your API key.',
-          statusCode: response.statusCode,
-          body: response.body,
-        );
-      default:
-        throw LingvanexException(
-          'Unexpected error',
-          statusCode: response.statusCode,
-          body: response.body,
-        );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return json['result'];
+    } else if (response.statusCode == 403) {
+      throw LingvanexException(
+        'Authorization error: check your API key.',
+        statusCode: response.statusCode,
+        body: response.body,
+      );
+    } else {
+      throw LingvanexException(
+        'Unexpected error',
+        statusCode: response.statusCode,
+        body: response.body,
+      );
     }
   }
 }

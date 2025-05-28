@@ -380,7 +380,7 @@ class TranslationInputCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: textGrey,
         borderRadius: BorderRadius.circular(8),
@@ -388,25 +388,29 @@ class TranslationInputCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // center area: spinner if busy, text if non-empty, else nothing
           Padding(
-            padding: EdgeInsets.all(32),
-            child: RotatedBox(
-              quarterTurns: 2,
-              child:
-                  isBusy
-                      ? const CircularProgressIndicator()
-                      : Text(
-                        text.isNotEmpty ? text : toLang.beginRecording,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.roboto(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 30,
-                          color: Colors.white,
-                        ),
-                      ),
-            ),
+            padding: const EdgeInsets.all(32),
+            child:
+                isBusy
+                    ? const CircularProgressIndicator()
+                    : (text.isNotEmpty
+                        ? RotatedBox(
+                          quarterTurns: 2,
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.roboto(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 30,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                        : const SizedBox.shrink()),
           ),
 
+          // unchanged: top-center flag + mic icon
           Positioned(
             top: 9,
             child: Container(
@@ -414,15 +418,17 @@ class TranslationInputCard extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 image: DecorationImage(
-                  image: AssetImage(_flagAsset(toLang)), // unchanged
+                  image: AssetImage(_flagAsset(toLang)),
                   fit: BoxFit.cover,
                 ),
               ),
-              child: Center(
+              child: const Center(
                 child: RotatedBox(
                   quarterTurns: 2,
-                  child: Image.asset(
-                    'assets/images/microphone-white-border.png',
+                  child: Image(
+                    image: AssetImage(
+                      'assets/images/microphone-white-border.png',
+                    ),
                     width: 40,
                     height: 40,
                   ),
@@ -430,12 +436,13 @@ class TranslationInputCard extends StatelessWidget {
               ),
             ),
           ),
-          // 1) Light-bulb at top-left
+
+          // unchanged: bulb + copy/play icons...
           Positioned(
             top: 8,
             left: 8,
             child: Transform.rotate(
-              angle: math.pi, // 180° rotation
+              angle: math.pi,
               child: Image.asset(
                 'assets/images/bulb.png',
                 width: 40,
@@ -443,7 +450,6 @@ class TranslationInputCard extends StatelessWidget {
               ),
             ),
           ),
-          // 2) Copy + Play-sound upside-down
           Positioned(
             top: 8,
             right: 8,
@@ -458,7 +464,7 @@ class TranslationInputCard extends StatelessWidget {
                     height: 40,
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Transform.rotate(
                   angle: math.pi,
                   child: Image.asset(
@@ -493,7 +499,7 @@ class TranslationOutputCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -501,38 +507,42 @@ class TranslationOutputCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Positioned(
-            top: 80,
-            left: 16,
-            right: 16,
-            child: Text(
-              text.isNotEmpty ? text : fromLang.beginRecording,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.roboto(
-                fontWeight: FontWeight.w500,
-                fontSize: 30,
-                color: Colors.black,
+          // only show text if non-empty
+          if (text.isNotEmpty)
+            Positioned(
+              top: 80,
+              left: 16,
+              right: 16,
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.roboto(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 30,
+                  color: Colors.black,
+                ),
               ),
             ),
-          ),
 
+          // mic button (bottom center)
           Positioned(
             bottom: 43,
             child: GestureDetector(
-              onTap: onMicTap, // ← just call the passed-in callback
-
+              onTap: onMicTap,
               child: Container(
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
                   image: DecorationImage(
-                    image: AssetImage(_flagAsset(fromLang)), // unchanged
+                    image: AssetImage(_flagAsset(fromLang)),
                     fit: BoxFit.cover,
                   ),
                 ),
-                child: Center(
-                  child: Image.asset(
-                    'assets/images/microphone-white-border.png',
+                child: const Center(
+                  child: Image(
+                    image: AssetImage(
+                      'assets/images/microphone-white-border.png',
+                    ),
                     width: 40,
                     height: 40,
                   ),
@@ -541,10 +551,15 @@ class TranslationOutputCard extends StatelessWidget {
             ),
           ),
 
-          Positioned(
+          // edit / copy / play icons (unchanged)
+          const Positioned(
             bottom: 43,
             left: 8,
-            child: Image.asset('assets/images/edit.png', width: 40, height: 40),
+            child: Image(
+              image: AssetImage('assets/images/edit.png'),
+              width: 40,
+              height: 40,
+            ),
           ),
           Positioned(
             bottom: 43,
@@ -553,7 +568,7 @@ class TranslationOutputCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Image.asset('assets/images/copy.png', width: 40, height: 40),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Image.asset(
                   'assets/images/play-sound.png',
                   width: 40,
