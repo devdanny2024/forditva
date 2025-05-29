@@ -1,6 +1,7 @@
 import 'dart:math' as math; // ← Add this at the top of your file
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
@@ -120,6 +121,77 @@ class _TextPageState extends State<TextPage> {
       ..setSpeechRate(0.5)
       ..setVolume(1.0)
       ..setPitch(1.0);
+  }
+
+  void _copyText(String text) {
+    if (text.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Copied to clipboard")));
+  }
+
+  Future<void> _playSound(String text, Language lang) async {
+    if (text.isEmpty) return;
+    final locale =
+        lang == Language.hungarian
+            ? 'hu-HU'
+            : lang == Language.german
+            ? 'de-DE'
+            : 'en-US';
+    await _flutterTts.setLanguage(locale);
+    await _flutterTts.speak(text);
+  }
+
+  // For edit icon (output card)
+  void _editInputFromOutput(String text) {
+    setState(() {
+      _inputController.text = text;
+      // Optionally clear translation
+      //_translation = '';
+    });
+    // Optionally focus the input box if you have one
+  }
+
+  void _explainTranslation({String level = 'A2'}) async {
+    final text = _translation;
+    if (text.isEmpty) return;
+
+    // Show a loading dialog first
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    // Use GeminiTranslator.translate with explain: true
+    final explanation = await _gemini.translate(
+      text,
+      _leftLanguage.code,
+      _rightLanguage.code,
+      explain: true,
+      level: level, // Pass the chosen explanation level (A1, A2, A3)
+    );
+
+    // Close the loader dialog
+    if (context.mounted) Navigator.of(context).pop();
+
+    // Show the explanation in an AlertDialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Explanation'),
+            content: Text(explanation),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Close"),
+              ),
+            ],
+          ),
+    );
   }
 
   Future<void> _speak(String text, Language lang) async {
@@ -370,12 +442,19 @@ class TranslationInputCard extends StatelessWidget {
   final Language toLang;
   final String text;
   final bool isBusy;
+  final VoidCallback? onExplain;
+  final VoidCallback? onCopy;
+  final VoidCallback? onPlaySound;
+
   const TranslationInputCard({
     super.key,
     required this.fromLang,
     required this.toLang,
     required this.text,
     required this.isBusy,
+    this.onExplain,
+    this.onCopy,
+    this.onPlaySound,
   });
   @override
   Widget build(BuildContext context) {
@@ -441,12 +520,15 @@ class TranslationInputCard extends StatelessWidget {
           Positioned(
             top: 8,
             left: 8,
-            child: Transform.rotate(
-              angle: math.pi,
-              child: Image.asset(
-                'assets/images/bulb.png',
-                width: 40,
-                height: 40,
+            child: GestureDetector(
+              onTap: onExplain,
+              child: Transform.rotate(
+                angle: math.pi,
+                child: Image.asset(
+                  'assets/images/bulb.png',
+                  width: 40,
+                  height: 40,
+                ),
               ),
             ),
           ),
@@ -456,21 +538,27 @@ class TranslationInputCard extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Transform.rotate(
-                  angle: math.pi,
-                  child: Image.asset(
-                    'assets/images/copy.png',
-                    width: 40,
-                    height: 40,
+                GestureDetector(
+                  onTap: onCopy,
+                  child: Transform.rotate(
+                    angle: math.pi,
+                    child: Image.asset(
+                      'assets/images/copy.png',
+                      width: 40,
+                      height: 40,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                Transform.rotate(
-                  angle: math.pi,
-                  child: Image.asset(
-                    'assets/images/play-sound.png',
-                    width: 40,
-                    height: 40,
+                GestureDetector(
+                  onTap: onPlaySound,
+                  child: Transform.rotate(
+                    angle: math.pi,
+                    child: Image.asset(
+                      'assets/images/play-sound.png',
+                      width: 40,
+                      height: 40,
+                    ),
                   ),
                 ),
               ],
