@@ -73,8 +73,6 @@ class _TextPageState extends State<TextPage> {
                 RecordingPage(fromLang: _leftLanguage, toLang: _rightLanguage),
       ),
     );
-
-    // if user cancelled or empty
     if (transcript == null || transcript.isEmpty) return;
 
     setState(() {
@@ -82,7 +80,7 @@ class _TextPageState extends State<TextPage> {
       _isTranslating = true;
     });
 
-    // perform Gemini translation
+    // Now translate...
     final geminiResult = await _gemini.translate(
       transcript,
       _leftLanguage.code,
@@ -93,6 +91,70 @@ class _TextPageState extends State<TextPage> {
       _translation = geminiResult;
       _isTranslating = false;
     });
+  }
+
+  Future<void> _openRecordingCustom({
+    required Language from,
+    required Language to,
+  }) async {
+    final transcript = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => RecordingPage(fromLang: from, toLang: to),
+      ),
+    );
+    if (transcript == null || transcript.isEmpty) return;
+
+    setState(() {
+      _inputController.text = transcript;
+      _isTranslating = true;
+    });
+
+    final geminiResult = await _gemini.translate(
+      transcript,
+      from.code,
+      to.code,
+    );
+
+    setState(() {
+      _translation = geminiResult;
+      _isTranslating = false;
+    });
+  }
+
+  Future<void> _editTranscript({required bool top}) async {
+    // Use the correct text for editing
+    final textToEdit = top ? _translation : _inputController.text;
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder:
+            (_) => RecordingPage(
+              fromLang: _leftLanguage,
+              toLang: _rightLanguage,
+              initialTranscript: textToEdit,
+              autoStart: false,
+            ),
+      ),
+    );
+    if (edited == null) return;
+    setState(() {
+      if (top) {
+        _translation = edited;
+      } else {
+        _inputController.text = edited;
+        _isTranslating = true;
+      }
+    });
+    if (!top) {
+      final geminiResult = await _gemini.translate(
+        edited,
+        _leftLanguage.code,
+        _rightLanguage.code,
+      );
+      setState(() {
+        _translation = geminiResult;
+        _isTranslating = false;
+      });
+    }
   }
 
   late final FlutterTts _flutterTts;
@@ -259,6 +321,14 @@ class _TextPageState extends State<TextPage> {
                 toLang: _rightLanguage,
                 text: _translation,
                 isBusy: _isTranslating,
+                onEditTap: () => _editTranscript(top: true),
+                onMicTap:
+                    () => _openRecordingCustom(
+                      from: _rightLanguage,
+                      to: _leftLanguage,
+                    ),
+                onPlaySound:
+                    () => _playSound(_inputController.text, _leftLanguage),
               ),
             ),
             // Left overlay
@@ -277,7 +347,7 @@ class _TextPageState extends State<TextPage> {
                 ),
               ),
             ),
-            // Output card
+            // Output card_editTranscript
             Positioned(
               top: halfH - 20,
               left: 16,
@@ -286,8 +356,19 @@ class _TextPageState extends State<TextPage> {
               child: TranslationOutputCard(
                 toLang: _rightLanguage,
                 fromLang: _leftLanguage,
-                text: _transcript,
-                onMicTap: _openRecording,
+                controller: _inputController, // <-- ADD this line
+                onMicTap:
+                    () => _openRecordingCustom(
+                      from: _leftLanguage,
+                      to: _rightLanguage,
+                    ),
+                onEditTap: () => _editTranscript(top: false),
+                onCopy: () => _copyText(_inputController.text),
+                onPlaySound:
+                    () => _playSound(
+                      _inputController.text,
+                      _leftLanguage,
+                    ), // <-- new
               ),
             ),
             // Right overlay
@@ -356,10 +437,14 @@ class _TextPageState extends State<TextPage> {
                       child: GestureDetector(
                         onTap:
                             () => setState(() {
-                              // swap the two languages (this will re-render both cards accordingly)
-                              final tmp = _leftLanguage;
+                              final tmpLang = _leftLanguage;
                               _leftLanguage = _rightLanguage;
-                              _rightLanguage = tmp;
+                              _rightLanguage = tmpLang;
+
+                              // Swap texts
+                              final tmpText = _inputController.text;
+                              _inputController.text = _translation;
+                              _translation = tmpText;
                             }),
                         child: Container(
                           width: switchSize,
@@ -445,6 +530,8 @@ class TranslationInputCard extends StatelessWidget {
   final VoidCallback? onExplain;
   final VoidCallback? onCopy;
   final VoidCallback? onPlaySound;
+  final VoidCallback? onEditTap; // Add this line
+  final VoidCallback? onMicTap;
 
   const TranslationInputCard({
     super.key,
@@ -455,7 +542,10 @@ class TranslationInputCard extends StatelessWidget {
     this.onExplain,
     this.onCopy,
     this.onPlaySound,
+    this.onEditTap,
+    this.onMicTap,
   });
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -465,58 +555,74 @@ class TranslationInputCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Stack(
-        alignment: Alignment.center,
         children: [
-          // center area: spinner if busy, text if non-empty, else nothing
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child:
-                isBusy
-                    ? const CircularProgressIndicator()
-                    : (text.isNotEmpty
-                        ? RotatedBox(
-                          quarterTurns: 2,
-                          child: Text(
-                            text,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.roboto(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 30,
-                              color: Colors.white,
-                            ),
-                          ),
-                        )
-                        : const SizedBox.shrink()),
-          ),
-
-          // unchanged: top-center flag + mic icon
-          Positioned(
-            top: 9,
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage(_flagAsset(toLang)),
-                  fit: BoxFit.cover,
+          // Scrollable, upside-down text, taking all space except for icons/mic
+          Positioned.fill(
+            top: 100, // Give space at top for mic/icons
+            bottom: 70,
+            child: SingleChildScrollView(
+              reverse: true, // So scrolling starts from the bottom
+              physics: const BouncingScrollPhysics(),
+              child: RotatedBox(
+                quarterTurns: 2, // Flip text upside down
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child:
+                      isBusy
+                          ? const Center(child: CircularProgressIndicator())
+                          : (text.isNotEmpty
+                              ? GestureDetector(
+                                onTap: onEditTap,
+                                child: Text(
+                                  text,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.roboto(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 30,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                              : const SizedBox.shrink()),
                 ),
               ),
-              child: const Center(
-                child: RotatedBox(
-                  quarterTurns: 2,
-                  child: Image(
-                    image: AssetImage(
-                      'assets/images/microphone-white-border.png',
+            ),
+          ),
+          // Mic button and icons (overlay)
+          Positioned(
+            top: 9,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: onMicTap,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage(_flagAsset(toLang)),
+                      fit: BoxFit.cover,
                     ),
-                    width: 40,
-                    height: 40,
+                  ),
+                  child: const Center(
+                    child: RotatedBox(
+                      quarterTurns: 2,
+                      child: Image(
+                        image: AssetImage(
+                          'assets/images/microphone-white-border.png',
+                        ),
+                        width: 40,
+                        height: 40,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
 
-          // unchanged: bulb + copy/play icons...
+          // Bulb icon (left)
           Positioned(
             top: 8,
             left: 8,
@@ -532,6 +638,7 @@ class TranslationInputCard extends StatelessWidget {
               ),
             ),
           ),
+          // Copy/Play icons (right)
           Positioned(
             top: 8,
             right: 8,
@@ -573,84 +680,92 @@ class TranslationInputCard extends StatelessWidget {
 class TranslationOutputCard extends StatelessWidget {
   final Language fromLang;
   final Language toLang;
-  final String text;
+  final TextEditingController controller;
   final Future<void> Function() onMicTap;
-
+  final VoidCallback? onEditTap;
+  final VoidCallback? onCopy;
+  final VoidCallback? onPlaySound;
   const TranslationOutputCard({
     super.key,
     required this.fromLang,
     required this.toLang,
-    required this.text,
+    required this.controller,
     required this.onMicTap,
+    this.onEditTap,
+    this.onCopy,
+    this.onPlaySound,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Estimate how much space the mic row uses (including icons), then pad bottom accordingly
+    const double bottomReserved = 110; // mic + icons area
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Stack(
-        alignment: Alignment.center,
         children: [
-          // only show text if non-empty
-          if (text.isNotEmpty)
-            Positioned(
-              top: 80,
-              left: 16,
-              right: 16,
-              child: Text(
-                text,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.roboto(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 30,
-                  color: Colors.black,
+          // The scrollable, non-editable transcribed text
+          Positioned.fill(
+            bottom: bottomReserved, // reserve space for mic/icons row
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: GestureDetector(
+                onTap: onEditTap,
+                child: Text(
+                  controller.text,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.roboto(
+                    fontWeight: FontWeight.w500,
+                    fontSize: 30,
+                    color: Colors.black,
+                  ),
                 ),
               ),
             ),
-
-          // mic button (bottom center)
+          ),
+          // Mic+Flag at bottom center (rectangle, not circle)
           Positioned(
-            bottom: 43,
+            bottom: 25,
+            left: 0,
+            right: 0,
             child: GestureDetector(
               onTap: onMicTap,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(_flagAsset(fromLang)),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                child: const Center(
-                  child: Image(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.asset(_flagAsset(fromLang), width: 80, height: 80),
+                  const Image(
                     image: AssetImage(
                       'assets/images/microphone-white-border.png',
                     ),
                     width: 40,
                     height: 40,
                   ),
-                ),
+                ],
+              ),
+            ),
+          ),
+          // Edit/copy/play icons on left/right (unchanged)
+          // Instead of const Image (edit), use GestureDetector:
+          Positioned(
+            bottom: 25,
+            left: 8,
+            child: GestureDetector(
+              onTap: onEditTap,
+              child: Image.asset(
+                'assets/images/edit.png',
+                width: 40,
+                height: 40,
               ),
             ),
           ),
 
-          // edit / copy / play icons (unchanged)
-          const Positioned(
-            bottom: 43,
-            left: 8,
-            child: Image(
-              image: AssetImage('assets/images/edit.png'),
-              width: 40,
-              height: 40,
-            ),
-          ),
           Positioned(
-            bottom: 43,
+            bottom: 25,
             right: 8,
             child: Row(
               mainAxisSize: MainAxisSize.min,
