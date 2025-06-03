@@ -74,6 +74,14 @@ class _TextPageState extends State<TextPage> {
     Language.german: 'DE',
     Language.english: 'EN',
   };
+  Future<void> _autoPlayTranslation() async {
+    if (_translation.isNotEmpty) {
+      await _playSound(
+        _translation,
+        _rightLanguage,
+      ); // Right lang = translated output
+    }
+  }
 
   Future<void> _openRecording() async {
     final transcript = await Navigator.of(context).push<String>(
@@ -184,6 +192,7 @@ class _TextPageState extends State<TextPage> {
                       _translation = transcript;
                       _isTranslating = true;
                     });
+
                     final geminiResult = await _gemini.translate(
                       transcript,
                       from.code, // from = output language
@@ -193,6 +202,7 @@ class _TextPageState extends State<TextPage> {
                       _inputController.text = geminiResult;
                       _isTranslating = false;
                     });
+                    await _playSound(_inputController.text, to);
                   } else {
                     // Set input (bottom) to transcript, then translate up to output
                     setState(() {
@@ -208,6 +218,7 @@ class _TextPageState extends State<TextPage> {
                       _translation = geminiResult;
                       _isTranslating = false;
                     });
+                    await _playSound(_translation, to);
                   }
                 },
                 onPartialTranscript: (partial) {
@@ -507,8 +518,7 @@ class _TextPageState extends State<TextPage> {
                       isTopPanel: true,
                     ),
 
-                onPlaySound:
-                    () => _playSound(_inputController.text, _leftLanguage),
+                onPlaySound: () => _playSound(_translation, _rightLanguage),
               ),
             ),
             // Left overlay
