@@ -5,6 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
+import 'package:forditva/utils/debouncer.dart'; // if you created it separately
+import 'package:forditva/utils/utils.dart';
+import 'package:forditva/widgets/edit_recording_modal.dart';
+import 'package:forditva/widgets/edit_recording_sheet.dart';
+import 'package:forditva/widgets/recording_modal.dart'; // adjust path as needed
 import 'package:google_fonts/google_fonts.dart';
 
 import 'RecordingPage.dart'; // correct path & casing
@@ -14,6 +19,7 @@ const Color navRed = Color(0xFFCD2A3E);
 const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
 const Color gold = Colors.amber;
+bool _showRecording = false;
 
 String _flagAsset(Language lang) {
   switch (lang) {
@@ -50,6 +56,9 @@ class TextPage extends StatefulWidget {
 /// ==================== TextPage ====================
 class _TextPageState extends State<TextPage> {
   final TextEditingController _inputController = TextEditingController();
+  final _debouncer = Debouncer(
+    milliseconds: 700,
+  ); // Debounce interval for live translation
 
   // ▶︎ what we spoke (bottom card)
   final String _transcript = '';
@@ -65,6 +74,7 @@ class _TextPageState extends State<TextPage> {
     Language.german: 'DE',
     Language.english: 'EN',
   };
+
   Future<void> _openRecording() async {
     final transcript = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -93,68 +103,150 @@ class _TextPageState extends State<TextPage> {
     });
   }
 
+  Future<void> showEditStackModal({
+    required BuildContext context,
+    required String initialText,
+    required Language lang,
+    required ValueChanged<String> onEdited,
+    required ValueChanged<String> onTranscribed,
+  }) async {
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black54.withOpacity(0.3),
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, a1, a2) {
+        final keyboard = MediaQuery.of(ctx).viewInsets.bottom;
+        final screenHeight = MediaQuery.of(ctx).size.height;
+        final availableHeight = screenHeight - keyboard;
+        final TextEditingController editController = TextEditingController(
+          text: initialText,
+        );
+
+        return Center(
+          child: SingleChildScrollView(
+            // This makes the entire stack move above the keyboard!
+            padding: EdgeInsets.only(bottom: keyboard),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Centered, not full-screen
+                RecordingModal(
+                  lang: lang,
+                  isTopPanel: true,
+                  editMode: true,
+                  controller: editController, // pass controller
+                  onTranscribed: (txt) {
+                    Navigator.of(ctx).pop();
+                    onTranscribed(txt);
+                  },
+                ),
+                const SizedBox(height: 16),
+                EditTextModal(
+                  controller: editController, // pass controller
+                  onEdited: (edited) {
+                    Navigator.of(ctx).pop();
+                    onEdited(edited);
+                  },
+                  isTextInLanguage:
+                      (text) =>
+                          isTextInLanguage(text, _langLabels[lang]!, _gemini),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _openRecordingCustom({
     required Language from,
     required Language to,
+    required bool isTopPanel, // true = output card, false = input card
   }) async {
-    final transcript = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => RecordingPage(fromLang: from, toLang: to),
-      ),
-    );
-    if (transcript == null || transcript.isEmpty) return;
-
-    setState(() {
-      _inputController.text = transcript;
-      _isTranslating = true;
-    });
-
-    final geminiResult = await _gemini.translate(
-      transcript,
-      from.code,
-      to.code,
-    );
-
-    setState(() {
-      _translation = geminiResult;
-      _isTranslating = false;
-    });
-  }
-
-  Future<void> _editTranscript({required bool top}) async {
-    // Use the correct text for editing
-    final textToEdit = top ? _translation : _inputController.text;
-    final edited = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder:
-            (_) => RecordingPage(
-              fromLang: _leftLanguage,
-              toLang: _rightLanguage,
-              initialTranscript: textToEdit,
-              autoStart: false,
+    await showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      barrierDismissible: false,
+      builder:
+          (context) => Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340, maxHeight: 180),
+              child: RecordingModal(
+                lang: from,
+                isTopPanel: isTopPanel,
+                onTranscribed: (transcript) async {
+                  if (isTopPanel) {
+                    // Set translation (output) to transcript, then translate "back" to input
+                    setState(() {
+                      _translation = transcript;
+                      _isTranslating = true;
+                    });
+                    final geminiResult = await _gemini.translate(
+                      transcript,
+                      from.code, // from = output language
+                      to.code, // to = input language
+                    );
+                    setState(() {
+                      _inputController.text = geminiResult;
+                      _isTranslating = false;
+                    });
+                  } else {
+                    // Set input (bottom) to transcript, then translate up to output
+                    setState(() {
+                      _inputController.text = transcript;
+                      _isTranslating = true;
+                    });
+                    final geminiResult = await _gemini.translate(
+                      transcript,
+                      from.code, // from = input language
+                      to.code, // to = output language
+                    );
+                    setState(() {
+                      _translation = geminiResult;
+                      _isTranslating = false;
+                    });
+                  }
+                },
+                onPartialTranscript: (partial) {
+                  _debouncer.run(() async {
+                    if (isTopPanel) {
+                      setState(() {
+                        _translation = partial;
+                        _isTranslating = true;
+                      });
+                      final geminiResult = await _gemini.translate(
+                        partial,
+                        from.code,
+                        to.code,
+                      );
+                      setState(() {
+                        _inputController.text = geminiResult;
+                        _isTranslating = false;
+                      });
+                    } else {
+                      setState(() {
+                        _inputController.text = partial;
+                        _isTranslating = true;
+                      });
+                      final geminiResult = await _gemini.translate(
+                        partial,
+                        from.code,
+                        to.code,
+                      );
+                      setState(() {
+                        _translation = geminiResult;
+                        _isTranslating = false;
+                      });
+                    }
+                  });
+                },
+              ),
             ),
-      ),
+          ),
     );
-    if (edited == null) return;
-    setState(() {
-      if (top) {
-        _translation = edited;
-      } else {
-        _inputController.text = edited;
-        _isTranslating = true;
-      }
-    });
-    if (!top) {
-      final geminiResult = await _gemini.translate(
-        edited,
-        _leftLanguage.code,
-        _rightLanguage.code,
-      );
-      setState(() {
-        _translation = geminiResult;
-        _isTranslating = false;
-      });
-    }
   }
 
   late final FlutterTts _flutterTts;
@@ -171,13 +263,76 @@ class _TextPageState extends State<TextPage> {
     return next;
   }
 
+  void showEditRecordingSheet({
+    required BuildContext context,
+    required String initialText,
+    required Language lang,
+    required ValueChanged<String> onEdited,
+    required GeminiTranslator gemini,
+    required String expectedLangCode,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return SafeArea(
+          child: EditRecordingSheet(
+            initialText: initialText,
+            onEdited: onEdited,
+            lang: lang,
+            expectedLangCode: expectedLangCode,
+            gemini: gemini,
+          ),
+        );
+      },
+    );
+  }
+
+  // In your TextPage or parent, call like this:
+  void _openRecordingModal(
+    BuildContext context,
+    double anchorTop,
+    double anchorBottom,
+  ) {
+    showGeneralDialog(
+      context: context,
+      barrierColor: Colors.transparent, // No overlay
+      barrierDismissible: false,
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (ctx, anim1, anim2) {
+        // Compute the height of your "anchor area"
+        final double anchorHeight = anchorBottom - anchorTop;
+        // Compute the vertical center of that area, then shift up by half modal height
+        final double modalHeight = 150; // or whatever you use
+        final double modalTop = anchorTop + (anchorHeight - modalHeight) / 2;
+
+        return Stack(
+          children: [
+            Positioned(
+              top: modalTop,
+              left: MediaQuery.of(ctx).size.width / 2 - 170, // (340/2)
+              child: RecordingModal(
+                lang: Language.english,
+                onTranscribed: (String transcript) {},
+                isTopPanel: true,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   final GlobalKey _leftLangKey = GlobalKey();
   final GlobalKey _rightLangKey = GlobalKey();
   final GlobalKey _micKey = GlobalKey();
+  final GlobalKey inputKey = GlobalKey();
+  final GlobalKey outputKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
-    // existing init...
     _flutterTts = FlutterTts();
     _flutterTts
       ..setSpeechRate(0.5)
@@ -304,10 +459,9 @@ class _TextPageState extends State<TextPage> {
         final switchSize = 70.0;
         final flagSize = 24.0;
         final halfH = constraints.maxHeight / 2;
-        // 2) Inside your build, get the UI language code:
         final uiLangCode =
             Localizations.localeOf(context).languageCode.toUpperCase();
-        // e.g. 'en','de','hu' → 'EN','DE','HU'
+
         return Stack(
           children: [
             // Input card
@@ -319,14 +473,40 @@ class _TextPageState extends State<TextPage> {
               child: TranslationInputCard(
                 fromLang: _leftLanguage,
                 toLang: _rightLanguage,
+                key: inputKey,
                 text: _translation,
                 isBusy: _isTranslating,
-                onEditTap: () => _editTranscript(top: true),
+                // ----- NEW: Stack Modal Editing
+                onEditTap: () {
+                  showEditRecordingSheet(
+                    context: context,
+                    initialText: _translation,
+                    lang: _rightLanguage,
+                    onEdited: (editedText) async {
+                      setState(() => _translation = editedText);
+                      setState(() => _isTranslating = true);
+                      final inputText = await _gemini.translate(
+                        editedText,
+                        _rightLanguage.code, // from
+                        _leftLanguage.code, // to
+                      );
+                      setState(() {
+                        _inputController.text = inputText;
+                        _isTranslating = false;
+                      });
+                    },
+                    gemini: _gemini,
+                    expectedLangCode: _langLabels[_rightLanguage]!,
+                  );
+                },
+
                 onMicTap:
                     () => _openRecordingCustom(
                       from: _rightLanguage,
                       to: _leftLanguage,
+                      isTopPanel: true,
                     ),
+
                 onPlaySound:
                     () => _playSound(_inputController.text, _leftLanguage),
               ),
@@ -347,7 +527,7 @@ class _TextPageState extends State<TextPage> {
                 ),
               ),
             ),
-            // Output card_editTranscript
+            // Output card
             Positioned(
               top: halfH - 20,
               left: 16,
@@ -356,19 +536,41 @@ class _TextPageState extends State<TextPage> {
               child: TranslationOutputCard(
                 toLang: _rightLanguage,
                 fromLang: _leftLanguage,
-                controller: _inputController, // <-- ADD this line
+                key: outputKey,
+                controller: _inputController,
                 onMicTap:
                     () => _openRecordingCustom(
                       from: _leftLanguage,
                       to: _rightLanguage,
+                      isTopPanel: false,
                     ),
-                onEditTap: () => _editTranscript(top: false),
+                // ----- NEW: Stack Modal Editing
+                onEditTap: () {
+                  showEditRecordingSheet(
+                    context: context,
+                    initialText: _inputController.text,
+                    lang: _leftLanguage,
+                    onEdited: (editedText) async {
+                      setState(() => _inputController.text = editedText);
+                      setState(() => _isTranslating = true);
+                      final outputText = await _gemini.translate(
+                        editedText,
+                        _leftLanguage.code, // from
+                        _rightLanguage.code, // to
+                      );
+                      setState(() {
+                        _translation = outputText;
+                        _isTranslating = false;
+                      });
+                    },
+                    gemini: _gemini,
+                    expectedLangCode: _langLabels[_leftLanguage]!,
+                  );
+                },
+
                 onCopy: () => _copyText(_inputController.text),
                 onPlaySound:
-                    () => _playSound(
-                      _inputController.text,
-                      _leftLanguage,
-                    ), // <-- new
+                    () => _playSound(_inputController.text, _leftLanguage),
               ),
             ),
             // Right overlay
@@ -387,7 +589,6 @@ class _TextPageState extends State<TextPage> {
                 ),
               ),
             ),
-
             // 4) Switch + flags row
             Positioned(
               top: halfH - switchSize / 2,
@@ -432,7 +633,6 @@ class _TextPageState extends State<TextPage> {
                         ),
                       ),
                     ),
-
                     Center(
                       child: GestureDetector(
                         onTap:
@@ -467,7 +667,6 @@ class _TextPageState extends State<TextPage> {
                         ),
                       ),
                     ),
-
                     // Right language toggle
                     Align(
                       alignment: Alignment.centerRight,
@@ -478,8 +677,8 @@ class _TextPageState extends State<TextPage> {
                               () => setState(() {
                                 // Skip whatever the left side is and advance _rightLanguage to the next
                                 _rightLanguage = _nextLanguage(
-                                  _rightLanguage, // start from current right
-                                  _leftLanguage, // skip the left one
+                                  _rightLanguage,
+                                  _leftLanguage,
                                 );
                               }),
                           child: Row(
@@ -521,6 +720,8 @@ class _TextPageState extends State<TextPage> {
     );
   }
 }
+
+// ======= Leave your card widgets below unchanged =======
 
 class TranslationInputCard extends StatelessWidget {
   final Language fromLang;
@@ -621,7 +822,6 @@ class TranslationInputCard extends StatelessWidget {
               ),
             ),
           ),
-
           // Bulb icon (left)
           Positioned(
             top: 8,
@@ -750,7 +950,6 @@ class TranslationOutputCard extends StatelessWidget {
             ),
           ),
           // Edit/copy/play icons on left/right (unchanged)
-          // Instead of const Image (edit), use GestureDetector:
           Positioned(
             bottom: 25,
             left: 8,
@@ -763,19 +962,28 @@ class TranslationOutputCard extends StatelessWidget {
               ),
             ),
           ),
-
           Positioned(
             bottom: 25,
             right: 8,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset('assets/images/copy.png', width: 40, height: 40),
+                GestureDetector(
+                  onTap: onCopy,
+                  child: Image.asset(
+                    'assets/images/copy.png',
+                    width: 40,
+                    height: 40,
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Image.asset(
-                  'assets/images/play-sound.png',
-                  width: 40,
-                  height: 40,
+                GestureDetector(
+                  onTap: onPlaySound,
+                  child: Image.asset(
+                    'assets/images/play-sound.png',
+                    width: 40,
+                    height: 40,
+                  ),
                 ),
               ],
             ),

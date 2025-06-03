@@ -75,7 +75,6 @@ class _RecordingPageState extends State<RecordingPage>
 
   @override
   void initState() {
-    super.initState();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
