@@ -162,7 +162,6 @@ class _MainScreenState extends State<MainScreen> {
       ),
       body: _pages[_currentPage],
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(bottom: 8.0),
         child: SizedBox(
           height: 56,
           child: Stack(

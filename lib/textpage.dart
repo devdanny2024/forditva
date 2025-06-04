@@ -4,15 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/models/language_enum.dart';
+import 'package:forditva/services/OpenAiTtsService.dart'; // your Gemini client
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:forditva/utils/debouncer.dart'; // if you created it separately
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/edit_recording_modal.dart';
-import 'package:forditva/widgets/edit_recording_sheet.dart';
 import 'package:forditva/widgets/recording_modal.dart'; // adjust path as needed
 import 'package:google_fonts/google_fonts.dart';
-
-import 'RecordingPage.dart'; // correct path & casing
+import 'package:just_audio/just_audio.dart';
 
 // Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
@@ -32,6 +31,9 @@ String _flagAsset(Language lang) {
   }
 }
 
+typedef OnEditAndTranslate =
+    void Function({required String edited, required String translated});
+
 extension LanguageRecordingText on Language {
   String get beginRecording {
     switch (this) {
@@ -43,6 +45,37 @@ extension LanguageRecordingText on Language {
       default:
         return 'Begin recording…';
     }
+  }
+}
+
+String instructionForLang(Language lang) {
+  switch (lang) {
+    case Language.hungarian:
+      return "Speak as this dialect: Hungarian";
+    case Language.german:
+      return "Speak as this dialect: German";
+    case Language.english:
+      return "Speak as this dialect: English";
+    default:
+      return "Speak as this dialect: English";
+  }
+}
+
+final Map<Language, String> _labelImages = {
+  Language.english: 'assets/images/EN-EN.png',
+  Language.german: 'assets/images/DE-DE.png',
+  Language.hungarian: 'assets/images/HU-HU.png',
+};
+
+// Add this OUTSIDE your classes
+String flagAsset(Language lang, {required bool whiteBorder}) {
+  switch (lang) {
+    case Language.hungarian:
+      return whiteBorder ? 'assets/flags/HU_BW.png' : 'assets/flags/HU_BB.png';
+    case Language.german:
+      return whiteBorder ? 'assets/flags/DE_BW.png' : 'assets/flags/DE_BB.png';
+    case Language.english:
+      return whiteBorder ? 'assets/flags/EN_BW.png' : 'assets/flags/EN_BB.png';
   }
 }
 
@@ -59,56 +92,46 @@ class _TextPageState extends State<TextPage> {
   final _debouncer = Debouncer(
     milliseconds: 700,
   ); // Debounce interval for live translation
-
-  // ▶︎ what we spoke (bottom card)
-  final String _transcript = '';
-  // ▶︎ what Gemini translated (top card)
   String _translation = '';
   // ▶︎ spinner while Gemini runs
   bool _isTranslating = false;
   // ▶︎ your Gemini client
   final GeminiTranslator _gemini = GeminiTranslator();
+  final _ttsService = OpenAiTtsService(); // Or inject if you use DI
+
   // ▶︎ map your Language enum into its two-letter codes
   final Map<Language, String> _langLabels = {
     Language.hungarian: 'HU',
     Language.german: 'DE',
     Language.english: 'EN',
   };
-  Future<void> _autoPlayTranslation() async {
-    if (_translation.isNotEmpty) {
-      await _playSound(
-        _translation,
-        _rightLanguage,
-      ); // Right lang = translated output
+
+  Future<void> _playSoundWithOpenAI(
+    String text,
+    Language lang,
+    String instructions,
+  ) async {
+    try {
+      // OpenAI voice selection (e.g. 'onyx', you can expand with more logic if desired)
+      const voice = "onyx";
+      final file = await _ttsService.synthesizeSpeech(
+        text: text,
+        voice: voice,
+        instructions: instructions,
+      );
+
+      final player = AudioPlayer();
+      await player.setFilePath(file.path);
+      await player.play();
+      // Dispose player if not persistent
+    } catch (e) {
+      print("TTS error: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('TTS failed: $e')));
+      }
     }
-  }
-
-  Future<void> _openRecording() async {
-    final transcript = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder:
-            (_) =>
-                RecordingPage(fromLang: _leftLanguage, toLang: _rightLanguage),
-      ),
-    );
-    if (transcript == null || transcript.isEmpty) return;
-
-    setState(() {
-      _inputController.text = transcript;
-      _isTranslating = true;
-    });
-
-    // Now translate...
-    final geminiResult = await _gemini.translate(
-      transcript,
-      _leftLanguage.code,
-      _rightLanguage.code,
-    );
-
-    setState(() {
-      _translation = geminiResult;
-      _isTranslating = false;
-    });
   }
 
   Future<void> showEditStackModal({
@@ -152,14 +175,26 @@ class _TextPageState extends State<TextPage> {
                 ),
                 const SizedBox(height: 16),
                 EditTextModal(
-                  controller: editController, // pass controller
-                  onEdited: (edited) {
-                    Navigator.of(ctx).pop();
-                    onEdited(edited);
+                  controller: editController,
+                  onEdited: ({
+                    required String edited,
+                    required String translated,
+                  }) {
+                    // Update state for both panels!
+                    setState(() {
+                      _translation =
+                          edited; // the text in the panel you just edited
+                      _inputController.text =
+                          translated; // the translation for the opposite panel
+                    });
                   },
                   isTextInLanguage:
                       (text) =>
                           isTextInLanguage(text, _langLabels[lang]!, _gemini),
+                  fromLang: lang, // this panel's language
+                  toLang:
+                      lang == _leftLanguage ? _rightLanguage : _leftLanguage,
+                  gemini: _gemini,
                 ),
               ],
             ),
@@ -202,7 +237,11 @@ class _TextPageState extends State<TextPage> {
                       _inputController.text = geminiResult;
                       _isTranslating = false;
                     });
-                    await _playSound(_inputController.text, to);
+                    await _playSoundWithOpenAI(
+                      _inputController.text,
+                      _leftLanguage,
+                      instructionForLang(_leftLanguage),
+                    );
                   } else {
                     // Set input (bottom) to transcript, then translate up to output
                     setState(() {
@@ -218,7 +257,11 @@ class _TextPageState extends State<TextPage> {
                       _translation = geminiResult;
                       _isTranslating = false;
                     });
-                    await _playSound(_translation, to);
+                    await _playSoundWithOpenAI(
+                      _translation,
+                      _rightLanguage,
+                      instructionForLang(_rightLanguage),
+                    );
                   }
                 },
                 onPartialTranscript: (partial) {
@@ -274,25 +317,28 @@ class _TextPageState extends State<TextPage> {
     return next;
   }
 
-  void showEditRecordingSheet({
+  void showEditTextModal({
     required BuildContext context,
     required String initialText,
-    required Language lang,
-    required ValueChanged<String> onEdited,
+    required Language fromLang,
+    required Language toLang,
     required GeminiTranslator gemini,
-    required String expectedLangCode,
+    required OnEditAndTranslate onEdited, // <- Use your typedef!
+    required Future<bool> Function(String text) isTextInLanguage,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final controller = TextEditingController(text: initialText);
         return SafeArea(
-          child: EditRecordingSheet(
-            initialText: initialText,
-            onEdited: onEdited,
-            lang: lang,
-            expectedLangCode: expectedLangCode,
+          child: EditTextModal(
+            controller: controller,
+            onEdited: onEdited, // Pass it directly
+            isTextInLanguage: isTextInLanguage,
+            fromLang: fromLang,
+            toLang: toLang,
             gemini: gemini,
           ),
         );
@@ -300,44 +346,6 @@ class _TextPageState extends State<TextPage> {
     );
   }
 
-  // In your TextPage or parent, call like this:
-  void _openRecordingModal(
-    BuildContext context,
-    double anchorTop,
-    double anchorBottom,
-  ) {
-    showGeneralDialog(
-      context: context,
-      barrierColor: Colors.transparent, // No overlay
-      barrierDismissible: false,
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (ctx, anim1, anim2) {
-        // Compute the height of your "anchor area"
-        final double anchorHeight = anchorBottom - anchorTop;
-        // Compute the vertical center of that area, then shift up by half modal height
-        final double modalHeight = 150; // or whatever you use
-        final double modalTop = anchorTop + (anchorHeight - modalHeight) / 2;
-
-        return Stack(
-          children: [
-            Positioned(
-              top: modalTop,
-              left: MediaQuery.of(ctx).size.width / 2 - 170, // (340/2)
-              child: RecordingModal(
-                lang: Language.english,
-                onTranscribed: (String transcript) {},
-                isTopPanel: true,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  final GlobalKey _leftLangKey = GlobalKey();
-  final GlobalKey _rightLangKey = GlobalKey();
-  final GlobalKey _micKey = GlobalKey();
   final GlobalKey inputKey = GlobalKey();
   final GlobalKey outputKey = GlobalKey();
 
@@ -371,93 +379,6 @@ class _TextPageState extends State<TextPage> {
     await _flutterTts.speak(text);
   }
 
-  // For edit icon (output card)
-  void _editInputFromOutput(String text) {
-    setState(() {
-      _inputController.text = text;
-      // Optionally clear translation
-      //_translation = '';
-    });
-    // Optionally focus the input box if you have one
-  }
-
-  void _explainTranslation({String level = 'A2'}) async {
-    final text = _translation;
-    if (text.isEmpty) return;
-
-    // Show a loading dialog first
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    // Use GeminiTranslator.translate with explain: true
-    final explanation = await _gemini.translate(
-      text,
-      _leftLanguage.code,
-      _rightLanguage.code,
-      explain: true,
-      level: level, // Pass the chosen explanation level (A1, A2, A3)
-    );
-
-    // Close the loader dialog
-    if (context.mounted) Navigator.of(context).pop();
-
-    // Show the explanation in an AlertDialog
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Explanation'),
-            content: Text(explanation),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text("Close"),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _speak(String text, Language lang) async {
-    // pick locale string
-    final locale =
-        lang == Language.hungarian
-            ? 'hu-HU'
-            : lang == Language.german
-            ? 'de-DE'
-            : 'en-US';
-    await _flutterTts.setLanguage(locale);
-    await _flutterTts.speak(text);
-  }
-
-  // 5) Map each enum to its flag asset path
-  String _flagAsset(Language lang) {
-    switch (lang) {
-      case Language.hungarian:
-        return 'assets/flags/HU_BB.png';
-      case Language.german:
-        return 'assets/flags/DE_BW.png';
-      case Language.english:
-        return 'assets/flags/EN_BW.png';
-    }
-  }
-
-  // 6) Map each enum to its label‐image asset path
-  String _labelAsset(Language lang) {
-    switch (lang) {
-      case Language.hungarian:
-        return 'assets/images/HU-EN.png';
-      case Language.german:
-        return 'assets/images/DE-EN.png';
-      case Language.english:
-        return 'assets/images/EN-EN.png';
-    }
-  }
-
   @override
   void dispose() {
     super.dispose();
@@ -468,10 +389,8 @@ class _TextPageState extends State<TextPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final switchSize = 70.0;
-        final flagSize = 24.0;
+        final flagSize = 30.0;
         final halfH = constraints.maxHeight / 2;
-        final uiLangCode =
-            Localizations.localeOf(context).languageCode.toUpperCase();
 
         return Stack(
           children: [
@@ -489,25 +408,34 @@ class _TextPageState extends State<TextPage> {
                 isBusy: _isTranslating,
                 // ----- NEW: Stack Modal Editing
                 onEditTap: () {
-                  showEditRecordingSheet(
+                  showEditTextModal(
                     context: context,
                     initialText: _translation,
-                    lang: _rightLanguage,
-                    onEdited: (editedText) async {
-                      setState(() => _translation = editedText);
-                      setState(() => _isTranslating = true);
-                      final inputText = await _gemini.translate(
-                        editedText,
-                        _rightLanguage.code, // from
-                        _leftLanguage.code, // to
-                      );
-                      setState(() {
-                        _inputController.text = inputText;
-                        _isTranslating = false;
-                      });
-                    },
+                    fromLang: _rightLanguage,
+                    toLang: _leftLanguage,
                     gemini: _gemini,
-                    expectedLangCode: _langLabels[_rightLanguage]!,
+                    onEdited: ({
+                      required String edited,
+                      required String translated,
+                    }) {
+                      setState(() {
+                        _translation = edited;
+                        _inputController.text = translated;
+                      });
+                      // Play TTS for the translated text (edited or translated as you want)
+                      _playSoundWithOpenAI(
+                        _inputController
+                            .text, // Or edited, depending on which panel
+                        _leftLanguage, // The language of the translated output
+                        instructionForLang(_leftLanguage),
+                      );
+                    },
+                    isTextInLanguage:
+                        (text) => isTextInLanguage(
+                          text,
+                          _langLabels[_rightLanguage]!,
+                          _gemini,
+                        ),
                   );
                 },
 
@@ -518,7 +446,12 @@ class _TextPageState extends State<TextPage> {
                       isTopPanel: true,
                     ),
 
-                onPlaySound: () => _playSound(_translation, _rightLanguage),
+                onPlaySound:
+                    () => _playSoundWithOpenAI(
+                      _translation,
+                      _rightLanguage,
+                      instructionForLang(_rightLanguage),
+                    ),
               ),
             ),
             // Left overlay
@@ -556,31 +489,43 @@ class _TextPageState extends State<TextPage> {
                     ),
                 // ----- NEW: Stack Modal Editing
                 onEditTap: () {
-                  showEditRecordingSheet(
+                  showEditTextModal(
                     context: context,
                     initialText: _inputController.text,
-                    lang: _leftLanguage,
-                    onEdited: (editedText) async {
-                      setState(() => _inputController.text = editedText);
-                      setState(() => _isTranslating = true);
-                      final outputText = await _gemini.translate(
-                        editedText,
-                        _leftLanguage.code, // from
-                        _rightLanguage.code, // to
-                      );
-                      setState(() {
-                        _translation = outputText;
-                        _isTranslating = false;
-                      });
-                    },
+                    fromLang: _leftLanguage,
+                    toLang: _rightLanguage,
                     gemini: _gemini,
-                    expectedLangCode: _langLabels[_leftLanguage]!,
+                    onEdited: ({
+                      required String edited,
+                      required String translated,
+                    }) {
+                      setState(() {
+                        _inputController.text = edited; // The panel you edited
+                        _translation =
+                            translated; // The opposite panel auto-translate
+                      });
+                      _playSoundWithOpenAI(
+                        _translation, // Or edited, depending on which panel
+                        _rightLanguage, // The language of the translated output
+                        instructionForLang(_rightLanguage),
+                      );
+                    },
+                    isTextInLanguage:
+                        (text) => isTextInLanguage(
+                          text,
+                          _langLabels[_leftLanguage]!,
+                          _gemini,
+                        ),
                   );
                 },
 
                 onCopy: () => _copyText(_inputController.text),
                 onPlaySound:
-                    () => _playSound(_inputController.text, _leftLanguage),
+                    () => _playSoundWithOpenAI(
+                      _inputController.text,
+                      _leftLanguage,
+                      instructionForLang(_leftLanguage),
+                    ),
               ),
             ),
             // Right overlay
@@ -626,7 +571,7 @@ class _TextPageState extends State<TextPage> {
                             children: [
                               ClipRRect(
                                 child: Image.asset(
-                                  _flagAsset(_leftLanguage),
+                                  flagAsset(_leftLanguage, whiteBorder: false),
                                   width: flagSize,
                                   height: flagSize,
                                   fit: BoxFit.cover,
@@ -634,7 +579,7 @@ class _TextPageState extends State<TextPage> {
                               ),
                               SizedBox(width: 5),
                               Image.asset(
-                                'assets/images/${_leftLanguage.code}-$uiLangCode.png',
+                                _labelImages[_leftLanguage]!,
                                 height: flagSize,
                                 fit: BoxFit.contain,
                               ),
@@ -699,7 +644,10 @@ class _TextPageState extends State<TextPage> {
                                 quarterTurns: 2,
                                 child: ClipRRect(
                                   child: Image.asset(
-                                    _flagAsset(_rightLanguage),
+                                    flagAsset(
+                                      _rightLanguage,
+                                      whiteBorder: true,
+                                    ),
                                     width: flagSize,
                                     height: flagSize,
                                     fit: BoxFit.cover,
@@ -710,7 +658,7 @@ class _TextPageState extends State<TextPage> {
                               RotatedBox(
                                 quarterTurns: 2,
                                 child: Image.asset(
-                                  'assets/images/${_rightLanguage.code}-$uiLangCode.png',
+                                  _labelImages[_rightLanguage]!,
                                   height: flagSize,
                                   fit: BoxFit.contain,
                                 ),
@@ -759,8 +707,9 @@ class TranslationInputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double fontSize = calculateFontSize(text);
+
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: textGrey,
         borderRadius: BorderRadius.circular(8),
@@ -770,7 +719,9 @@ class TranslationInputCard extends StatelessWidget {
           // Scrollable, upside-down text, taking all space except for icons/mic
           Positioned.fill(
             top: 100, // Give space at top for mic/icons
-            bottom: 70,
+            bottom: dynamicInputBottom(fontSize),
+            left: 16,
+            right: 16,
             child: SingleChildScrollView(
               reverse: true, // So scrolling starts from the bottom
               physics: const BouncingScrollPhysics(),
@@ -785,12 +736,13 @@ class TranslationInputCard extends StatelessWidget {
                               ? GestureDetector(
                                 onTap: onEditTap,
                                 child: Text(
-                                  text,
+                                  capitalizeFirst(text),
                                   textAlign: TextAlign.center,
-                                  style: GoogleFonts.roboto(
+                                  style: GoogleFonts.robotoCondensed(
                                     fontWeight: FontWeight.w500,
-                                    fontSize: 30,
+                                    fontSize: calculateFontSize(text),
                                     color: Colors.white,
+                                    height: 1,
                                   ),
                                 ),
                               )
@@ -812,7 +764,7 @@ class TranslationInputCard extends StatelessWidget {
                   height: 80,
                   decoration: BoxDecoration(
                     image: DecorationImage(
-                      image: AssetImage(_flagAsset(toLang)),
+                      image: AssetImage(flagAsset(toLang, whiteBorder: true)),
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -908,10 +860,12 @@ class TranslationOutputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double fontSize = calculateFontSize(controller.text);
+
     // Estimate how much space the mic row uses (including icons), then pad bottom accordingly
     const double bottomReserved = 110; // mic + icons area
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
+      padding: dynamicOutputPadding(fontSize), // <== dynamic top padding
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -925,13 +879,16 @@ class TranslationOutputCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: GestureDetector(
                 onTap: onEditTap,
-                child: Text(
-                  controller.text,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.roboto(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 30,
-                    color: Colors.black,
+                child: Center(
+                  child: Text(
+                    capitalizeFirst(controller.text),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.robotoCondensed(
+                      fontWeight: FontWeight.w500,
+                      fontSize: calculateFontSize(controller.text),
+                      color: Colors.black,
+                      height: 1,
+                    ),
                   ),
                 ),
               ),
@@ -947,7 +904,11 @@ class TranslationOutputCard extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Image.asset(_flagAsset(fromLang), width: 80, height: 80),
+                  Image.asset(
+                    flagAsset(fromLang, whiteBorder: false),
+                    width: 80,
+                    height: 80,
+                  ),
                   const Image(
                     image: AssetImage(
                       'assets/images/microphone-white-border.png',
