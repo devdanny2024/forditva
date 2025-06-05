@@ -41,3 +41,21 @@ EdgeInsets dynamicOutputPadding(double fontSize) {
   double top = minPadding + (maxPadding - minPadding) * normalized;
   return EdgeInsets.fromLTRB(16, top, 16, 16);
 }
+
+double dynamicFontSize(String text) {
+  // You can choose a smarter scaling if you want
+  int len = text.length;
+  // For example, more text = smaller font
+  if (len < 20) return 37;
+  if (len > 120) return 25;
+  // interpolate between 37 and 25
+  return 37 - ((len - 20) / 100) * (37 - 25);
+}
+
+double dynamicInBottom(double fontSize) {
+  // bottom goes from 160 (for min font) to 80 (for max font)
+  double minPadding = 160;
+  double maxPadding = 80;
+  double normalized = (37 - fontSize) / (37 - 25); // 37 → 0, 25 → 1
+  return minPadding + (maxPadding - minPadding) * normalized;
+}
