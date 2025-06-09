@@ -20,6 +20,17 @@ double calculateFontSize(String text) {
   return scaled;
 }
 
+double calculateFontSizes(String text, double panelH) {
+  const double maxFont = 50;
+  const double minFont = 25;
+  // Tighter font for smaller panels:
+  double scaleFactor = (panelH / 200).clamp(0.5, 1.0); // tweak as needed
+  double scaled = maxFont * scaleFactor - (text.length * 0.15);
+  if (scaled < minFont) return minFont;
+  if (scaled > maxFont) return maxFont;
+  return scaled;
+}
+
 String capitalizeFirst(String text) {
   if (text.isEmpty) return text;
   return text[0].toUpperCase() + text.substring(1);
@@ -35,7 +46,7 @@ double dynamicInputBottom(double fontSize) {
 
 EdgeInsets dynamicOutputPadding(double fontSize) {
   // top goes from 110 (min size) to 40 (max size)
-  double minPadding = 120;
+  double minPadding = 150;
   double maxPadding = 40;
   double normalized = (50 - fontSize) / (50 - 20); // fontSize 50→0, 20→1
   double top = minPadding + (maxPadding - minPadding) * normalized;

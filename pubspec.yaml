@@ -64,3 +64,4 @@ flutter:
     - .env
     - assets/flags/
     - assets/images/
+    - assets/splash/

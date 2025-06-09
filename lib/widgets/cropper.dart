@@ -19,9 +19,11 @@ class ImageCropperPage extends StatefulWidget {
 
 class _ImageCropperPageState extends State<ImageCropperPage> {
   List<Offset> _points = [];
-  final double boxSize = 350;
+  img.Image? _decodedImage;
+
   bool _isProcessing = false; // Changed to mutable
 
+  // Responsive sizing
   /// Crops the given image file to the specified polygon shape.
   ///
   /// [imageFile]: The original image file to be cropped.
@@ -29,6 +31,17 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
   /// [drawW], [drawH]: The width and height of the drawing area where the points were collected.
   ///
   /// Returns a Future that resolves to the cropped File, or null if an error occurs.
+  ///
+  @override
+  void initState() {
+    super.initState();
+    // Decode once at startup for aspect ratio and drawing
+    widget.imageFile.readAsBytes().then((bytes) {
+      final decoded = img.decodeImage(bytes);
+      if (mounted) setState(() => _decodedImage = decoded);
+    });
+  }
+
   Future<File?> _cropImageToPolygon(
     // Renamed to a private method for clarity
     File imageFile,
@@ -146,6 +159,18 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
     if (_isProcessing) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    if (_decodedImage == null) {
+      // Still loading image
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final double boxSize = 350;
+    final screenW = MediaQuery.of(context).size.width;
+    final double sidePadding = 6.0;
+    final double cropBoxWidth = screenW - 2 * sidePadding;
+    final double imgW = _decodedImage!.width.toDouble();
+    final double imgH = _decodedImage!.height.toDouble();
+    final double aspectRatio = imgW / imgH;
+    final double cropBoxHeight = cropBoxWidth / aspectRatio; // dynamic!
 
     return Scaffold(
       body: Stack(
@@ -163,41 +188,44 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
           ),
           // Centered image box with drawing area
           Center(
-            child: SizedBox(
-              width: boxSize,
-              height: boxSize,
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      widget.imageFile,
-                      fit: BoxFit.contain,
-                      width: boxSize,
-                      height: boxSize,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                bottom: 100,
+                top: 20,
+              ), // adjust as needed
+              child: SizedBox(
+                width: cropBoxWidth,
+                height: cropBoxHeight,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        widget.imageFile,
+                        fit: BoxFit.fill,
+                        width: cropBoxWidth,
+                        height: cropBoxHeight,
+                      ),
                     ),
-                  ),
-                  // GestureDetector to capture drawing input
-                  GestureDetector(
-                    onPanStart: (details) {
-                      setState(() {
-                        _points = [details.localPosition]; // Start new drawing
-                      });
-                    },
-                    onPanUpdate: (details) {
-                      setState(() {
-                        // Add new points to the current drawing
-                        _points = List.from(_points)
-                          ..add(details.localPosition);
-                      });
-                    },
-                    // CustomPainter to draw the freehand line
-                    child: CustomPaint(
-                      painter: _FreehandPainter(_points),
-                      size: Size(boxSize, boxSize),
+                    GestureDetector(
+                      onPanStart: (details) {
+                        setState(() {
+                          _points = [details.localPosition];
+                        });
+                      },
+                      onPanUpdate: (details) {
+                        setState(() {
+                          _points = List.from(_points)
+                            ..add(details.localPosition);
+                        });
+                      },
+                      child: CustomPaint(
+                        painter: _FreehandPainter(_points),
+                        size: Size(cropBoxWidth, cropBoxHeight),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -208,10 +236,8 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
             child: GestureDetector(
               onTap: () async {
                 if (_points.length < 3) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Draw a closed shape first!')),
-                  );
-                  setState(() => _points = []); // Clear points if not enough
+                  // If not enough points, just return the original image
+                  Navigator.of(context).pop(widget.imageFile);
                   return;
                 }
                 // Check if shape is closed or close enough
@@ -247,8 +273,8 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
                 final croppedFile = await _cropImageToPolygon(
                   widget.imageFile,
                   pointsToCrop, // Use the modified list for cropping
-                  drawW: boxSize,
-                  drawH: boxSize,
+                  drawW: cropBoxWidth,
+                  drawH: cropBoxHeight,
                 );
 
                 // Set processing state back to false

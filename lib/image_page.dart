@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:forditva/services/chatgpt_service.dart';
+import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -93,6 +94,19 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   bool _zoomable = false;
   bool _interpretMode = false; // false = translate, true = interpret
   late final ScrollController _scrollController;
+  bool _isJsonArray(String str) {
+    try {
+      final decoded = json.decode(str);
+      return decoded is List;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isHtmlDoc(String str) {
+    final s = str.trim();
+    return s.startsWith('<') && s.endsWith('>');
+  }
 
   @override
   void initState() {
@@ -139,71 +153,144 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     if (_imageFile != null) _processImage(imageFile: _imageFile!);
   }
 
-  Widget _formattedResult(String result) {
-    // Try to decode JSON (translation array)
+  String stripCodeFence(String input) {
+    // Removes any kind of triple-backtick code block, including ```json, ```html, etc.
+    final fence = RegExp(
+      r'^\s*```[\w]*\s*([\s\S]*?)```$',
+      multiLine: true,
+      caseSensitive: false,
+    );
+    final match = fence.firstMatch(input.trim());
+    if (match != null) return match.group(1)!.trim();
+    // Handles just starting with ```
+    if (input.trim().startsWith('```')) {
+      return input
+          .trim()
+          .replaceAll(RegExp(r'^```[\w]*'), '')
+          .replaceAll('```', '')
+          .trim();
+    }
+    return input.trim();
+  }
+
+  Widget formattedJsonResult(String jsonStr, double panelH) {
+    final clean = stripCodeFence(jsonStr);
+    List<dynamic> items;
     try {
-      final items = json.decode(result) as List;
-      String clean(String s) => s.replaceAll(RegExp(r'[^\w\s]'), '');
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children:
-            items.map<Widget>((item) {
-              final orig = clean(item['o'] ?? '');
-              final trans = clean(item['t'] ?? '');
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+      items = json.decode(clean) as List;
+    } catch (_) {
+      // fallback: show raw (bad) output
+      return Text(
+        clean,
+        style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
+      );
+    }
+
+    // Pick a dynamic font size based on panel height or text length
+    double calcFont(String text) {
+      const double maxFont = 36;
+      const double minFont = 18;
+      double scale = (panelH / 200).clamp(0.7, 1.0);
+      double scaled = maxFont * scale - (text.length * 0.1);
+      if (scaled < minFont) return minFont;
+      if (scaled > maxFont) return maxFont;
+      return scaled;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children:
+          items.map<Widget>((item) {
+            final orig = (item['o'] ?? '').toString().trim();
+            final trans = (item['t'] ?? '').toString().trim();
+            if (orig.isEmpty && trans.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (orig.isNotEmpty)
                     Text(
                       orig,
                       style: GoogleFonts.robotoCondensed(
-                        fontSize: 26,
-                        color: navRed,
+                        fontSize: calcFont(orig),
                         fontWeight: FontWeight.bold,
+                        color: navRed,
                       ),
                     ),
-                    Text(
-                      trans,
-                      style: GoogleFonts.robotoCondensed(
-                        fontSize: 24,
-                        color: navGreen,
-                        fontWeight: FontWeight.w500,
+                  if (trans.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        trans,
+                        style: GoogleFonts.robotoCondensed(
+                          fontSize: calcFont(trans),
+                          fontWeight: FontWeight.w500,
+                          color: navGreen,
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
+                ],
+              ),
+            );
+          }).toList(),
+    );
+  }
+
+  Widget _formattedResult(String resultJson, double panelH) {
+    final cleanJson = stripCodeFence(resultJson);
+    List<dynamic> items;
+    try {
+      items = json.decode(cleanJson) as List;
+      // ...format your output as widgets...
+    } catch (e) {
+      // Fallback: show plain text
+      return Text(
+        cleanJson,
+        style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
       );
-    } catch (_) {
-      // If not JSON, check if it's HTML (possibly inside code fence)
-      String stripped = stripHtmlCodeFence(result);
-      if (stripped.trim().startsWith('<')) {
-        return Html(
-          data: stripped,
-          style: {
-            "h1": Style(
-              color: navRed,
-              fontSize: FontSize(28),
-              fontWeight: FontWeight.bold,
-            ),
-            "h2": Style(
-              color: navRed,
-              fontSize: FontSize(24),
-              fontWeight: FontWeight.bold,
-            ),
-            "strong": Style(color: navRed),
-            "li": Style(color: navGreen, fontSize: FontSize(20)),
-          },
-        );
-      } else {
-        return Text(
-          stripped,
-          style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
-        );
-      }
     }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children:
+          items.map<Widget>((item) {
+            final orig = (item['o'] ?? '').toString().trim();
+            final trans = (item['t'] ?? '').toString().trim();
+
+            if (orig.isEmpty && trans.isEmpty) return SizedBox.shrink();
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (orig.isNotEmpty)
+                    Text(
+                      orig,
+                      style: GoogleFonts.robotoCondensed(
+                        fontSize: calculateFontSizes(orig, panelH),
+                        fontWeight: FontWeight.bold,
+                        color: navRed,
+                      ),
+                    ),
+                  if (trans.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        trans,
+                        style: GoogleFonts.robotoCondensed(
+                          fontSize: calculateFontSizes(trans, panelH),
+                          fontWeight: FontWeight.w500,
+                          color: navGreen,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }).toList(),
+    );
   }
 
   Future<void> _processImage({required File imageFile}) async {
@@ -287,14 +374,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           Expanded(
             child: LayoutBuilder(
               builder: (ctx, constraints) {
+                const double minPanel = 80.0;
+
                 final totalH = constraints.maxHeight;
                 final usable = (totalH - _dividerH).clamp(
-                  _minTopPanel + _minBotPanel,
+                  minPanel * 2,
                   totalH - _dividerH,
                 );
+
                 final topH = (_splitRatio * usable).clamp(
-                  _minTopPanel,
-                  usable - _minBotPanel,
+                  minPanel,
+                  usable - minPanel,
                 );
                 final bottomH = usable - topH;
 
@@ -303,7 +393,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     // ─── Top panel ──────────────────────────────
                     SizedBox(
                       width: boxW,
-                      height: 200,
+                      height: topH,
                       child: Stack(
                         children: [
                           // White rounded box with image or placeholder
@@ -321,11 +411,15 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   (_croppedImageFile ?? _imageFile) != null
                                       ? ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
-                                        child: Image.file(
-                                          _croppedImageFile ?? _imageFile!,
-                                          width: boxW,
-                                          height: topH,
-                                          fit: BoxFit.cover,
+                                        child: InteractiveViewer(
+                                          minScale: 1,
+                                          maxScale: 4,
+                                          child: Image.file(
+                                            _croppedImageFile ?? _imageFile!,
+                                            width: boxW,
+                                            height: topH,
+                                            fit: BoxFit.contain,
+                                          ),
                                         ),
                                       )
                                       : /* ... your placeholder content here ... */ Column(
@@ -413,12 +507,14 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       behavior: HitTestBehavior.translucent,
                       onPanUpdate:
                           (d) => setState(() {
+                            // Calculate new top height by adding the drag delta
                             final newTop = (topH + d.delta.dy).clamp(
-                              _minTopPanel,
-                              usable - _minBotPanel,
+                              minPanel,
+                              usable - minPanel,
                             );
                             _splitRatio = newTop / usable;
                           }),
+
                       child: Container(
                         width: boxW,
                         height: _dividerH,
@@ -436,7 +532,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     // ─── Bottom panel with auto-sized AI response ───
                     SizedBox(
                       width: boxW,
-                      height: 400,
+                      height: bottomH,
                       child: LayoutBuilder(
                         builder: (ctx2, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
@@ -446,7 +542,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                           final availH = panelH - iconRowH - 16;
 
                           // pick a font size that fits (same logic)
-                          final sizes = [40.0, 35.0, 30.0, 25.0];
+                          final sizes = [40.0, 35.0, 30.0, 25.0, 18.0, 12.0];
                           double chosenSize = sizes.last;
                           for (final s in sizes) {
                             final tp = TextPainter(
@@ -466,6 +562,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                             }
                           }
 
+                          // ...rest of your bottom panel widget...
+                          // (keep as in your code, passing chosenSize)
                           return Stack(
                             children: [
                               // white background
@@ -476,7 +574,6 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     width: 2,
                                   ),
                                   borderRadius: BorderRadius.circular(8),
-                                  // Remove the plain color and add background image
                                   image: DecorationImage(
                                     image: AssetImage(
                                       'assets/images/bg-bright.jpg',
@@ -485,8 +582,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   ),
                                 ),
                               ),
-
-                              // show loader or AI text
+                              // ... keep your other bottom panel widgets ...
+                              // just make sure you use chosenSize in the HTML/Text!
                               if (_isProcessing)
                                 const Center(child: CircularProgressIndicator())
                               else
@@ -500,10 +597,55 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     thumbVisibility: true,
                                     child: SingleChildScrollView(
                                       controller: _scrollController,
-                                      child: _formattedResult(
-                                        _resultText.isNotEmpty
-                                            ? _resultText
-                                            : _placeholderText,
+                                      child: Builder(
+                                        builder: (_) {
+                                          final panelH =
+                                              panelConstraints.maxHeight;
+                                          final panelW =
+                                              panelConstraints.maxWidth;
+                                          final res =
+                                              _resultText.isNotEmpty
+                                                  ? _resultText
+                                                  : _placeholderText;
+                                          final htmlStr = stripHtmlCodeFence(
+                                            res,
+                                          );
+                                          if (_isJsonArray(res)) {
+                                            return formattedJsonResult(
+                                              res,
+                                              panelH,
+                                            ); // <- use panelH for font sizing
+                                          } else if (_isHtmlDoc(htmlStr)) {
+                                            return Html(
+                                              data: htmlStr,
+                                              style: {
+                                                "body": Style(
+                                                  fontSize: FontSize(
+                                                    calculateFontSizes(
+                                                      res,
+                                                      panelH,
+                                                    ),
+                                                  ),
+                                                  fontFamily:
+                                                      GoogleFonts.robotoCondensed()
+                                                          .fontFamily,
+                                                ),
+                                              },
+                                            );
+                                          } else {
+                                            return Text(
+                                              res,
+                                              style:
+                                                  GoogleFonts.robotoCondensed(
+                                                    fontSize:
+                                                        calculateFontSizes(
+                                                          res,
+                                                          panelH,
+                                                        ),
+                                                  ),
+                                            );
+                                          }
+                                        },
                                       ),
                                     ),
                                   ),

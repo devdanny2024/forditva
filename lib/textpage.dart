@@ -990,7 +990,7 @@ class TranslationInputCard extends StatelessWidget {
           ),
           // Mic button and icons (overlay)
           Positioned(
-            top: 9,
+            top: 20,
             left: 0,
             right: 0,
             child: Center(
@@ -1023,7 +1023,7 @@ class TranslationInputCard extends StatelessWidget {
           ),
           // Bulb icon (left)
           Positioned(
-            top: 8,
+            top: 20,
             left: 8,
             child: GestureDetector(
               onTap: onExplain,
@@ -1039,7 +1039,7 @@ class TranslationInputCard extends StatelessWidget {
           ),
           // Copy/Play icons (right)
           Positioned(
-            top: 8,
+            top: 20,
             right: 8,
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1140,9 +1140,9 @@ class TranslationOutputCard extends StatelessWidget {
           // The scrollable, non-editable transcribed text
           Positioned.fill(
             bottom: bottomReserved,
-            top: 100, // reserve space for mic/icons row
+            top: 0, // reserve space for mic/icons row
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: dynamicOutputPadding(fontSize),
               child: GestureDetector(
                 onTap: onEditTap,
                 child: Center(
@@ -1165,7 +1165,7 @@ class TranslationOutputCard extends StatelessWidget {
           ),
           // Mic+Flag at bottom center (rectangle, not circle)
           Positioned(
-            bottom: 50,
+            bottom: 60,
             left: 0,
             right: 0,
             child: GestureDetector(
@@ -1191,7 +1191,7 @@ class TranslationOutputCard extends StatelessWidget {
           ),
           // Edit/copy/play icons on left/right (unchanged)
           Positioned(
-            bottom: 50,
+            bottom: 60,
             left: 8,
             child: GestureDetector(
               onTap: onEditTap,
@@ -1203,7 +1203,7 @@ class TranslationOutputCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 50,
+            bottom: 60,
             right: 8,
             child: Row(
               mainAxisSize: MainAxisSize.min,

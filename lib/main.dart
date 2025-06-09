@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:forditva/widgets/splash_screen.dart'; // Adjust path!
 import 'package:google_fonts/google_fonts.dart';
 
 import 'document/document_translation_page.dart';
@@ -28,7 +29,6 @@ void main() async {
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
-
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -50,15 +50,55 @@ class _MyAppState extends State<MyApp> {
           debugShowCheckedModeBanner: false,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          title: 'Lang Translator App',
+          title: 'Forditva',
           theme: ThemeData(primarySwatch: Colors.green),
-          home: MainScreen(
-            key: ValueKey(locale?.languageCode), // <- this forces rebuild
-            onLocaleChanged: setLocale,
-          ),
+          // 👇 SPLASH IS HOME NOW
+          home: SplashScreenWithLocaleSetter(onLocaleChanged: setLocale),
         );
       },
     );
+  }
+}
+// In the same file or a new one, but after SplashScreen is defined
+
+class SplashScreenWithLocaleSetter extends StatelessWidget {
+  final void Function(Locale) onLocaleChanged;
+  const SplashScreenWithLocaleSetter({
+    super.key,
+    required this.onLocaleChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SplashScreenRedirect(onLocaleChanged: onLocaleChanged);
+  }
+}
+
+class SplashScreenRedirect extends StatefulWidget {
+  final void Function(Locale) onLocaleChanged;
+  const SplashScreenRedirect({super.key, required this.onLocaleChanged});
+
+  @override
+  State<SplashScreenRedirect> createState() => _SplashScreenRedirectState();
+}
+
+class _SplashScreenRedirectState extends State<SplashScreenRedirect> {
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 2), () {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => MainScreen(onLocaleChanged: widget.onLocaleChanged),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The actual splash visuals
+    return const SplashScreen();
   }
 }
 
