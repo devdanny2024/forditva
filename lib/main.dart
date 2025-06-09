@@ -151,173 +151,193 @@ class _MainScreenState extends State<MainScreen> {
           ],
         ),
       ),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight - 20),
-        child: AppBar(
-          automaticallyImplyLeading: false,
-          centerTitle: true,
-          toolbarHeight: kToolbarHeight - 20,
-          elevation: 0,
+      appBar: null,
+      body: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 20), // ← adjust as needed
+          child: _pages[_currentPage],
         ),
       ),
-      body: _pages[_currentPage],
-      bottomNavigationBar: Container(
-        child: SizedBox(
-          height: 56,
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                right: 20,
-                top: 0,
-                bottom: 0,
-                child: Container(color: navRed),
-              ),
-              Positioned(
-                left: 20,
-                right: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(color: navGreen),
-              ),
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      border: Border(
-                        top: BorderSide(color: Colors.black, width: 1),
-                        bottom: BorderSide(color: Colors.black, width: 1),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(
-                          flex: 1,
-                          child: Builder(
-                            builder:
-                                (ctx) => GestureDetector(
-                                  onTap: () => Scaffold.of(ctx).openDrawer(),
-                                  child: Container(
-                                    color: navRed,
-                                    alignment: Alignment.center,
-                                    child: Image.asset(
-                                      'assets/images/menu_w.png',
-                                      width: 35,
-                                      height: 35,
-                                      color: Colors.white,
-                                      colorBlendMode: BlendMode.srcIn,
+
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 20,
+        ), // 👈 Add bottom padding here
+        child: ClipRRect(
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(32),
+            topRight: Radius.circular(32),
+            bottomLeft: Radius.circular(32),
+            bottomRight: Radius.circular(32),
+          ),
+          child: Container(
+            child: SizedBox(
+              height: 56,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: 0,
+                    right: 20,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(color: navRed),
+                  ),
+                  Positioned(
+                    left: 20,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(color: navGreen),
+                  ),
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 16.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          border: Border(
+                            top: BorderSide(color: Colors.black, width: 1),
+                            bottom: BorderSide(color: Colors.black, width: 1),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(
+                              flex: 1,
+                              child: Builder(
+                                builder:
+                                    (ctx) => GestureDetector(
+                                      onTap:
+                                          () => Scaffold.of(ctx).openDrawer(),
+                                      child: Container(
+                                        color: navRed,
+                                        alignment: Alignment.center,
+                                        child: Image.asset(
+                                          'assets/images/menu_w.png',
+                                          width: 35,
+                                          height: 35,
+                                          color: Colors.white,
+                                          colorBlendMode: BlendMode.srcIn,
+                                        ),
+                                      ),
+                                    ),
+                              ),
+                            ),
+                            Flexible(
+                              flex: 1,
+                              child: GestureDetector(
+                                onTap:
+                                    () => setState(() {
+                                      if (_currentPage == 1)
+                                        _currentPage = 5;
+                                      else if (_currentPage == 5)
+                                        _currentPage = 6;
+                                      else
+                                        _currentPage = 1;
+                                    }),
+                                child: Container(
+                                  color: navRed,
+                                  alignment: Alignment.center,
+                                  child: Image.asset(
+                                    _currentPage == 1
+                                        ? 'assets/images/w_discussion.png'
+                                        : _currentPage == 5
+                                        ? 'assets/images/document-mode_w.png'
+                                        : 'assets/images/photo_mode_w.png',
+                                    width: 35,
+                                    height: 35,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Flexible(
+                              flex: 3,
+                              child: GestureDetector(
+                                onTap:
+                                    () => setState(() {
+                                      if (_currentPage == 1)
+                                        _currentPage = 5;
+                                      else if (_currentPage == 5)
+                                        _currentPage = 6;
+                                      else
+                                        _currentPage = 1;
+                                    }),
+                                child: Container(
+                                  color: Colors.white,
+                                  alignment: Alignment.center,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      _getPageName(_currentPage),
+                                      maxLines: 1,
+                                      style: GoogleFonts.robotoCondensed(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 25,
+                                        color: Colors.black,
+                                      ),
                                     ),
                                   ),
                                 ),
-                          ),
-                        ),
-                        Flexible(
-                          flex: 1,
-                          child: GestureDetector(
-                            onTap:
-                                () => setState(() {
-                                  if (_currentPage == 1)
-                                    _currentPage = 5;
-                                  else if (_currentPage == 5)
-                                    _currentPage = 6;
-                                  else
-                                    _currentPage = 1;
-                                }),
-                            child: Container(
-                              color: navRed,
-                              alignment: Alignment.center,
-                              child: Image.asset(
-                                _currentPage == 1
-                                    ? 'assets/images/w_discussion.png'
-                                    : _currentPage == 5
-                                    ? 'assets/images/document-mode_w.png'
-                                    : 'assets/images/photo_mode_w.png',
-                                width: 35,
-                                height: 35,
                               ),
                             ),
-                          ),
-                        ),
-                        Flexible(
-                          flex: 3,
-                          child: GestureDetector(
-                            onTap:
-                                () => setState(() {
-                                  if (_currentPage == 1)
-                                    _currentPage = 5;
-                                  else if (_currentPage == 5)
-                                    _currentPage = 6;
-                                  else
-                                    _currentPage = 1;
-                                }),
-                            child: Container(
-                              color: Colors.white,
-                              alignment: Alignment.center,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  _getPageName(_currentPage),
-                                  maxLines: 1,
-                                  style: GoogleFonts.robotoCondensed(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 25,
-                                    color: Colors.black,
-                                  ),
+                            Flexible(
+                              flex: 3,
+                              child: Container(
+                                color: navGreen,
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 2),
+                                      child: Image.asset(
+                                        'assets/images/learning_list_w.png',
+                                        width: 35,
+                                        height: 35,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 3),
+                                      child: Image.asset(
+                                        'assets/images/favorit_w.png',
+                                        width: 35,
+                                        height: 35,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 4),
+                                      child: Image.asset(
+                                        'assets/images/history_1.png',
+                                        width: 35,
+                                        height: 35,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                        Flexible(
-                          flex: 3,
-                          child: Container(
-                            color: navGreen,
-                            alignment: Alignment.center,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                GestureDetector(
-                                  onTap: () => setState(() => _currentPage = 2),
-                                  child: Image.asset(
-                                    'assets/images/learning_list_w.png',
-                                    width: 35,
-                                    height: 35,
-                                    colorBlendMode: BlendMode.srcIn,
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                GestureDetector(
-                                  onTap: () => setState(() => _currentPage = 3),
-                                  child: Image.asset(
-                                    'assets/images/favorit_w.png',
-                                    width: 35,
-                                    height: 35,
-                                    colorBlendMode: BlendMode.srcIn,
-                                  ),
-                                ),
-                                SizedBox(width: 10),
-                                GestureDetector(
-                                  onTap: () => setState(() => _currentPage = 4),
-                                  child: Image.asset(
-                                    'assets/images/history_1.png',
-                                    width: 35,
-                                    height: 35,
-                                    colorBlendMode: BlendMode.srcIn,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

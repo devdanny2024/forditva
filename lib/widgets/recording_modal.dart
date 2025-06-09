@@ -29,10 +29,7 @@ class RecordingModal extends StatefulWidget {
   final Function(String) onTranscribed;
   final bool isTopPanel;
   final Function(String)? onPartialTranscript;
-  final bool editMode;
-  final TextEditingController? textController;
-  final Function(String)? onConcatRecording;
-  final TextEditingController? controller; // <--- ADD THIS
+  // Removed editMode, textController, onConcatRecording, and controller as they are no longer needed for this modal.
 
   const RecordingModal({
     super.key,
@@ -40,10 +37,6 @@ class RecordingModal extends StatefulWidget {
     required this.onTranscribed,
     required this.isTopPanel,
     this.onPartialTranscript,
-    this.editMode = false,
-    this.textController,
-    this.onConcatRecording,
-    this.controller, // <--- ADD THIS
   });
 
   @override
@@ -62,17 +55,18 @@ class _RecordingModalState extends State<RecordingModal> {
   final _sttService = GoogleSpeechToTextService(dotenv.env['GOOGLE_STT_KEY']!);
   Timer? _fakeWaveTimer;
   String _sttTranscript = ''; // Holds STT result before switching modes
-  bool _switchingToContinuous = false; // NEW: tracks if user switched
-  bool _loadingConcat = false;
+  bool _switchingToContinuous = false; // Tracks if user switched
+  final String _continuousTranscript = '';
+
+  // Removed _loadingConcat as it was related to editMode.
 
   @override
   void initState() {
     super.initState();
     _recorderController = RecorderController();
     _recorder = AudioRecorder();
-    if (!widget.editMode) {
-      _startAutodetect();
-    }
+    // Start autodetect immediately, as editMode is gone.
+    _startAutodetect();
   }
 
   @override
@@ -110,7 +104,7 @@ class _RecordingModalState extends State<RecordingModal> {
     String localeId;
     switch (widget.lang) {
       case Language.hungarian:
-        localeId = 'en_US'; // Fallback
+        localeId = 'hu_HU';
         break;
       case Language.german:
         localeId = 'de_DE';
@@ -157,23 +151,21 @@ class _RecordingModalState extends State<RecordingModal> {
     _stopFakeWave();
     _isRecording = false;
     if (_transcript.trim().isNotEmpty) {
-      _sttTranscript = _transcript.trim(); // Save for concatenation!
+      _sttTranscript = _transcript.trim();
       if (!_switchingToContinuous) {
-        // Only call onTranscribed and close if NOT switching modes!
+        // User did NOT switch to continuous: just return this transcript
         widget.onTranscribed(_sttTranscript);
         if (mounted) Navigator.of(context).pop();
       }
+      // If switchingToContinuous, wait for audio part to finish
     } else {
-      setState(() {
-        _error = "";
-      });
+      setState(() => _error = "No speech detected. Try again.");
       if (!_switchingToContinuous && mounted) {
+        widget.onTranscribed('');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Please make a recording"),
-            duration: Duration(seconds: 2),
-          ),
+          const SnackBar(content: Text("Please make a recording")),
         );
+        Navigator.of(context).pop();
       }
     }
   }
@@ -223,7 +215,7 @@ class _RecordingModalState extends State<RecordingModal> {
       combinedTranscript = '';
     }
 
-    // **ALWAYS** call onTranscribed and close
+    // ALWAYS call onTranscribed and close
     widget.onTranscribed(combinedTranscript);
 
     if (combinedTranscript.isEmpty) {
@@ -239,45 +231,6 @@ class _RecordingModalState extends State<RecordingModal> {
 
     // Close the modal regardless
     if (mounted) Navigator.of(context).pop();
-  }
-
-  Future<String> _endContinuousForEdit() async {
-    _isRecording = false;
-    String? path = await _recorder.stop();
-    _recorderController.stop();
-
-    print('Recording stopped. File path: $path');
-
-    if (path == null || !File(path).existsSync()) {
-      setState(() {
-        _error = "[RECORDING_DEBUG] Recording failed. Try again.";
-      });
-      print('[RECORDING_DEBUG]Recording file missing or not found');
-      return '';
-    }
-
-    String transcript = await _transcribeAudio(File(path), widget.lang);
-
-    print('Transcript from Google STT: "$transcript"');
-
-    String combinedTranscript = '';
-    if (_sttTranscript.trim().isNotEmpty && transcript.trim().isNotEmpty) {
-      combinedTranscript = '${_sttTranscript.trim()} ${transcript.trim()}';
-    } else if (_sttTranscript.trim().isNotEmpty) {
-      combinedTranscript = _sttTranscript.trim();
-    } else {
-      combinedTranscript = transcript.trim();
-    }
-
-    print('Combined transcript: "$combinedTranscript"');
-
-    // DO NOT pop the modal here—just return the transcript!
-    if (combinedTranscript.isEmpty) {
-      setState(() {
-        _error = "Couldn't transcribe audio. Try again.";
-      });
-    }
-    return combinedTranscript;
   }
 
   Future<String> _transcribeAudio(File audioFile, Language lang) async {
@@ -307,39 +260,20 @@ class _RecordingModalState extends State<RecordingModal> {
     }
   }
 
-  void _handleButtonPress() {
-    if (mode == RecordingMode.autodetect) {
-      _switchToContinuous();
-    } else {
-      _endContinuous();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    String buttonAsset;
-    if (mode == RecordingMode.autodetect) {
-      buttonAsset = 'assets/images/record_pause.png';
-    } else {
-      buttonAsset = 'assets/images/record_x.png';
-    }
-
     return Material(
-      // <--- replaces Dialog for elevation & rounded corners
       elevation: 24,
       color: Colors.white,
       borderRadius: BorderRadius.circular(5),
       child: Container(
         height: 150,
-        width: 350, // or 400, or whatever fixed width you want
+        width: 350,
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border.all(
-            color: Colors.black, // Border color
-            width: 5, // Border width, adjust as needed
-          ),
-          borderRadius: BorderRadius.circular(5), // Match the Dialog
-          boxShadow: [
+          border: Border.all(color: Colors.black, width: 5),
+          borderRadius: BorderRadius.circular(5),
+          boxShadow: const [
             BoxShadow(
               color: Colors.black12,
               blurRadius: 16,
@@ -368,62 +302,22 @@ class _RecordingModalState extends State<RecordingModal> {
                   const SizedBox(width: 16),
                   GestureDetector(
                     onTap: () async {
-                      if (widget.editMode) {
-                        if (!_isRecording) {
-                          // Start continuous recording in edit mode
-                          await _switchToContinuous();
-                        } else {
-                          // End continuous, concat, show loader, don't close modal
-                          setState(() => _loadingConcat = true);
-                          String transcript = await _endContinuousForEdit();
-                          setState(() => _loadingConcat = false);
-
-                          final textToSend = [
-                            (widget.textController?.text ?? '').trim(),
-                            transcript.trim(),
-                          ].where((e) => e.isNotEmpty).join(' ');
-                          if (widget.onConcatRecording != null) {
-                            widget.onConcatRecording!(textToSend);
-                          }
-                          // Optionally reset local state for another round
-                          setState(() {
-                            _transcript = '';
-                            _sttTranscript = '';
-                          });
-                          // DO NOT pop the modal!
-                        }
+                      // Streamlined logic for non-edit mode
+                      if (mode == RecordingMode.autodetect) {
+                        // If in autodetect, tapping means "switch to continuous"
+                        await _switchToContinuous();
                       } else {
-                        // Not edit mode: legacy behavior
-                        if (!_isRecording) {
-                          if (mode == RecordingMode.autodetect) {
-                            await _switchToContinuous();
-                          }
-                        } else {
-                          await _endContinuous();
-                        }
+                        // If in continuous, tapping means "end recording"
+                        await _endContinuous();
                       }
                     },
-
-                    child:
-                        widget.editMode
-                            ? (!_isRecording
-                                ? Image.asset(
-                                  'assets/images/record_green.jpeg',
-                                  width: 80,
-                                  height: 80,
-                                )
-                                : Image.asset(
-                                  'assets/images/record_x.png',
-                                  width: 100,
-                                  height: 100,
-                                ))
-                            : Image.asset(
-                              mode == RecordingMode.autodetect
-                                  ? 'assets/images/record_pause.png'
-                                  : 'assets/images/record_x.png',
-                              width: 100,
-                              height: 100,
-                            ),
+                    child: Image.asset(
+                      mode == RecordingMode.autodetect
+                          ? 'assets/images/record_pause.png'
+                          : 'assets/images/record_x.png',
+                      width: 100,
+                      height: 100,
+                    ),
                   ),
                 ],
               ),
@@ -450,13 +344,7 @@ class _RecordingModalState extends State<RecordingModal> {
                   textAlign: TextAlign.center,
                 ),
               ),
-            if (_loadingConcat)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.white.withOpacity(0.7),
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-              ),
+            // Removed _loadingConcat spinner as it was for editMode.
           ],
         ),
       ),
@@ -507,9 +395,7 @@ class _FakeWaveformState extends State<FakeWaveform>
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Container(
                   width: 6,
-                  height:
-                      _height.value *
-                      (1 + (i % 3) * 0.2), // make it a bit varied
+                  height: _height.value * (1 + (i % 3) * 0.2),
                   decoration: BoxDecoration(
                     color: Colors.green,
                     borderRadius: BorderRadius.circular(3),

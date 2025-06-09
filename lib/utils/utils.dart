@@ -12,7 +12,7 @@ Future<bool> isTextInLanguage(
 
 double calculateFontSize(String text) {
   const double maxFont = 50;
-  const double minFont = 20;
+  const double minFont = 30;
   // Tweak the "scaling" divisor as needed
   double scaled = maxFont - (text.length * 0.2);
   if (scaled < minFont) return minFont;

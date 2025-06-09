@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math; // ← Add this at the top of your file
 
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -11,7 +13,6 @@ import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/edit_recording_modal.dart';
 import 'package:forditva/widgets/recording_modal.dart'; // adjust path as needed
 import 'package:google_fonts/google_fonts.dart';
-import 'package:just_audio/just_audio.dart';
 
 // Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
@@ -95,6 +96,9 @@ class _TextPageState extends State<TextPage> {
   String _translation = '';
   // ▶︎ spinner while Gemini runs
   bool _isTranslating = false;
+  bool _isAudioLoadingInput = false; // For the input card play button
+  bool _isAudioLoadingOutput = false; // For the output card play button
+
   // ▶︎ your Gemini client
   final GeminiTranslator _gemini = GeminiTranslator();
   final _ttsService = OpenAiTtsService(); // Or inject if you use DI
@@ -110,27 +114,154 @@ class _TextPageState extends State<TextPage> {
     String text,
     Language lang,
     String instructions,
+    VoidCallback onStart, // New: called when audio STARTS
+    VoidCallback onDone, // New: called when audio COMPLETES
   ) async {
     try {
-      // OpenAI voice selection (e.g. 'onyx', you can expand with more logic if desired)
+      print("[TTS] Starting synthesis...");
       const voice = "onyx";
+
       final file = await _ttsService.synthesizeSpeech(
         text: text,
         voice: voice,
         instructions: instructions,
       );
 
-      final player = AudioPlayer();
-      await player.setFilePath(file.path);
-      await player.play();
-      // Dispose player if not persistent
-    } catch (e) {
-      print("TTS error: $e");
+      if (!await file.exists() || (await file.length()) == 0) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("TTS failed: ${file.path}")));
+        }
+        onDone();
+        return;
+      }
+
+      final player = ap.AudioPlayer();
+      bool revealed = false;
+
+      StreamSubscription<ap.PlayerState>? stateSub;
+      stateSub = player.onPlayerStateChanged.listen((state) {
+        if (state == ap.PlayerState.playing && !revealed) {
+          revealed = true;
+          onStart(); // Reveal text as soon as audio starts!
+        }
+        if (state == ap.PlayerState.completed) {
+          onDone(); // Hide spinner (if you want to after playback ends)
+          stateSub?.cancel();
+        }
+      });
+
+      await player.play(ap.DeviceFileSource(file.path));
+    } catch (e, stack) {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('TTS failed: $e')));
       }
+      onDone();
+    }
+  }
+
+  Future<void> _autoPlayInputTTS() async {
+    if (mounted) setState(() => _isAudioLoadingInput = true);
+    await _playSoundWithOpenAI(
+      _translation, // or whichever text you want to play
+      _rightLanguage,
+      instructionForLang(_rightLanguage),
+      () {}, // onStart
+      () {
+        if (mounted) setState(() => _isAudioLoadingInput = false);
+      },
+    );
+  }
+
+  Future<void> _autoPlayOutputTTS() async {
+    if (mounted) {
+      setState(() => _isAudioLoadingOutput = true);
+    }
+    await _playSoundWithOpenAI(
+      _inputController.text,
+      _leftLanguage,
+      instructionForLang(_leftLanguage),
+      () {}, // onStart
+      () {
+        if (mounted) setState(() => _isAudioLoadingOutput = false);
+      },
+    );
+  }
+
+  Future<void> autoTranslateOnLanguageChange({bool leftChanged = true}) async {
+    setState(() {
+      _isTranslating = true;
+      if (leftChanged) {
+        _isAudioLoadingOutput = true;
+      } else {
+        _isAudioLoadingInput = true;
+      }
+    });
+
+    String sourceText;
+    Language fromLang, toLang;
+
+    if (leftChanged) {
+      sourceText = _translation;
+      fromLang = _rightLanguage;
+      toLang = _leftLanguage;
+      if (sourceText.trim().isEmpty) {
+        setState(() {
+          _isTranslating = false;
+          _isAudioLoadingOutput = false;
+        });
+        return;
+      }
+      final result = await _gemini.translate(
+        sourceText,
+        fromLang.code,
+        toLang.code,
+      );
+      setState(() {
+        _inputController.text = result;
+        _isTranslating = false;
+      });
+      await _playSoundWithOpenAI(
+        _inputController.text,
+        _leftLanguage,
+        instructionForLang(_leftLanguage),
+        () {}, // onStart
+        () {
+          if (mounted) setState(() => _isAudioLoadingOutput = false);
+        },
+      );
+    } else {
+      sourceText = _inputController.text;
+      fromLang = _leftLanguage;
+      toLang = _rightLanguage;
+      if (sourceText.trim().isEmpty) {
+        setState(() {
+          _isTranslating = false;
+          _isAudioLoadingInput = false;
+        });
+        return;
+      }
+      final result = await _gemini.translate(
+        sourceText,
+        fromLang.code,
+        toLang.code,
+      );
+      setState(() {
+        _translation = result;
+        _isTranslating = false;
+      });
+      await _playSoundWithOpenAI(
+        _translation,
+        _rightLanguage,
+        instructionForLang(_rightLanguage),
+        () {}, // onStart
+        () {
+          if (mounted) setState(() => _isAudioLoadingInput = false);
+        },
+      );
     }
   }
 
@@ -166,8 +297,7 @@ class _TextPageState extends State<TextPage> {
                 RecordingModal(
                   lang: lang,
                   isTopPanel: true,
-                  editMode: true,
-                  controller: editController, // pass controller
+                  // pass controller
                   onTranscribed: (txt) {
                     Navigator.of(ctx).pop();
                     onTranscribed(txt);
@@ -204,10 +334,54 @@ class _TextPageState extends State<TextPage> {
     );
   }
 
+  Future<String> translateFinal(String input, String from, String to) async {
+    if (from == 'HU' || to == 'HU') {
+      final normalized = await _gemini.translate(input, from, to);
+      // Only use the final translation result:
+      return await _gemini.translate(normalized, from, to);
+    } else {
+      return await _gemini.translate(input, from, to);
+    }
+  }
+
+  Future<void> _playSoundAndReveal({
+    required String text,
+    required Language lang,
+    required String instructions,
+    required VoidCallback onReveal,
+  }) async {
+    try {
+      const voice = "onyx";
+      final file = await _ttsService.synthesizeSpeech(
+        text: text,
+        voice: voice,
+        instructions: instructions,
+      );
+
+      if (!await file.exists() || (await file.length()) == 0) {
+        onReveal(); // Reveal anyway if audio fails
+        return;
+      }
+
+      final player = ap.AudioPlayer();
+      StreamSubscription<ap.PlayerState>? stateSub;
+      stateSub = player.onPlayerStateChanged.listen((state) {
+        if (state == ap.PlayerState.playing) {
+          onReveal();
+          stateSub?.cancel(); // Cancel the subscription after revealing
+        }
+      });
+
+      await player.play(ap.DeviceFileSource(file.path));
+    } catch (e) {
+      onReveal(); // Reveal anyway on error
+    }
+  }
+
   Future<void> _openRecordingCustom({
     required Language from,
     required Language to,
-    required bool isTopPanel, // true = output card, false = input card
+    required bool isTopPanel, // true = output/top, false = input/bottom
   }) async {
     await showDialog(
       context: context,
@@ -221,81 +395,84 @@ class _TextPageState extends State<TextPage> {
                 lang: from,
                 isTopPanel: isTopPanel,
                 onTranscribed: (transcript) async {
+                  if (transcript.trim().isEmpty) {
+                    if (mounted) setState(() => _isTranslating = false);
+                    return;
+                  }
+                  if (mounted) setState(() => _isTranslating = true);
+
+                  // Set the transcribed text (user's speech) to the card
+                  // where the *translated* text previously appeared.
                   if (isTopPanel) {
-                    // Set translation (output) to transcript, then translate "back" to input
+                    // If top mic tapped, transcribed text goes to the top card (_translation)
                     setState(() {
                       _translation = transcript;
-                      _isTranslating = true;
                     });
-
-                    final geminiResult = await _gemini.translate(
-                      transcript,
-                      from.code, // from = output language
-                      to.code, // to = input language
-                    );
-                    setState(() {
-                      _inputController.text = geminiResult;
-                      _isTranslating = false;
-                    });
-                    await _playSoundWithOpenAI(
-                      _inputController.text,
-                      _leftLanguage,
-                      instructionForLang(_leftLanguage),
-                    );
                   } else {
-                    // Set input (bottom) to transcript, then translate up to output
+                    // If bottom mic tapped, transcribed text goes to the bottom card (_inputController.text)
                     setState(() {
                       _inputController.text = transcript;
-                      _isTranslating = true;
                     });
-                    final geminiResult = await _gemini.translate(
-                      transcript,
-                      from.code, // from = input language
-                      to.code, // to = output language
+                  }
+
+                  // Always translate from the user's spoken language (`from.code`)
+                  // to the target language (`to.code`).
+                  final geminiResult = await translateFinal(
+                    transcript,
+                    from.code,
+                    to.code,
+                  );
+
+                  // Now, set the translated text to the card
+                  // where the *transcribed* text previously appeared.
+                  if (isTopPanel) {
+                    // Top mic tapped: translated text goes to the bottom card (_inputController.text)
+                    setState(() {
+                      _inputController.text = geminiResult;
+                      _isTranslating =
+                          false; // Stop general translation busy indicator
+                    });
+                    // Play TTS for the translated text (now in _inputController.text, language is _leftLanguage)
+                    setState(
+                      () => _isAudioLoadingInput = true,
+                    ); // Assuming _isAudioLoadingInput is for the bottom card
+                    await _playSoundWithOpenAI(
+                      _inputController.text, // Text to play
+                      _leftLanguage, // Language of the translated text
+                      instructionForLang(_leftLanguage),
+                      () {}, // onStart: Don't reveal, text is already visible
+                      () {
+                        if (mounted)
+                          setState(() => _isAudioLoadingInput = false);
+                      },
                     );
+                  } else {
+                    // Bottom mic tapped: translated text goes to the top card (_translation)
                     setState(() {
                       _translation = geminiResult;
-                      _isTranslating = false;
+                      _isTranslating =
+                          false; // Stop general translation busy indicator
                     });
+                    // Play TTS for the translated text (now in _translation, language is _rightLanguage)
+                    setState(
+                      () => _isAudioLoadingOutput = true,
+                    ); // Assuming _isAudioLoadingOutput is for the top card
                     await _playSoundWithOpenAI(
-                      _translation,
-                      _rightLanguage,
+                      _translation, // Text to play
+                      _rightLanguage, // Language of the translated text
                       instructionForLang(_rightLanguage),
+                      () {}, // onStart: Don't reveal, text is already visible
+                      () {
+                        if (mounted)
+                          setState(() => _isAudioLoadingOutput = false);
+                      },
                     );
                   }
                 },
                 onPartialTranscript: (partial) {
-                  _debouncer.run(() async {
-                    if (isTopPanel) {
-                      setState(() {
-                        _translation = partial;
-                        _isTranslating = true;
-                      });
-                      final geminiResult = await _gemini.translate(
-                        partial,
-                        from.code,
-                        to.code,
-                      );
-                      setState(() {
-                        _inputController.text = geminiResult;
-                        _isTranslating = false;
-                      });
-                    } else {
-                      setState(() {
-                        _inputController.text = partial;
-                        _isTranslating = true;
-                      });
-                      final geminiResult = await _gemini.translate(
-                        partial,
-                        from.code,
-                        to.code,
-                      );
-                      setState(() {
-                        _translation = geminiResult;
-                        _isTranslating = false;
-                      });
-                    }
-                  });
+                  // Optional: If you want live updates as user speaks, handle here
+                  // You might need to adjust this logic too if you want partials to swap places
+                  // according to the new logic. For now, it's left as is to avoid over-complication.
                 },
               ),
             ),
@@ -391,288 +568,339 @@ class _TextPageState extends State<TextPage> {
         final switchSize = 70.0;
         final flagSize = 30.0;
         final halfH = constraints.maxHeight / 2;
+        return Container(
+          padding: const EdgeInsets.only(top: 30),
+          child: Stack(
+            children: [
+              // Input card
+              Positioned(
+                top: 0,
+                left: 16,
+                right: 16,
+                height: halfH + switchSize / 2,
+                child: TranslationInputCard(
+                  fromLang: _leftLanguage,
+                  toLang: _rightLanguage,
+                  key: inputKey,
+                  text: _translation,
+                  isBusy: _isTranslating,
+                  isAudioLoading: _isAudioLoadingInput,
 
-        return Stack(
-          children: [
-            // Input card
-            Positioned(
-              top: 0,
-              left: 16,
-              right: 16,
-              height: halfH + switchSize / 2,
-              child: TranslationInputCard(
-                fromLang: _leftLanguage,
-                toLang: _rightLanguage,
-                key: inputKey,
-                text: _translation,
-                isBusy: _isTranslating,
-                // ----- NEW: Stack Modal Editing
-                onEditTap: () {
-                  showEditTextModal(
-                    context: context,
-                    initialText: _translation,
-                    fromLang: _rightLanguage,
-                    toLang: _leftLanguage,
-                    gemini: _gemini,
-                    onEdited: ({
-                      required String edited,
-                      required String translated,
-                    }) {
-                      setState(() {
-                        _translation = edited;
-                        _inputController.text = translated;
-                      });
-                      // Play TTS for the translated text (edited or translated as you want)
-                      _playSoundWithOpenAI(
-                        _inputController
-                            .text, // Or edited, depending on which panel
-                        _leftLanguage, // The language of the translated output
-                        instructionForLang(_leftLanguage),
-                      );
-                    },
-                    isTextInLanguage:
-                        (text) => isTextInLanguage(
-                          text,
-                          _langLabels[_rightLanguage]!,
-                          _gemini,
-                        ),
-                  );
-                },
+                  // ----- NEW: Stack Modal Editing
+                  onEditTap: () {
+                    showEditTextModal(
+                      context: context,
+                      initialText: _translation,
+                      fromLang: _rightLanguage,
+                      toLang: _leftLanguage,
+                      gemini: _gemini,
+                      onEdited: ({
+                        required String edited,
+                        required String translated,
+                      }) {
+                        setState(() {
+                          _translation = edited;
+                          _inputController.text = translated;
+                        });
+                        // Play TTS for the translated text (edited or translated as you want)
+                        _playSoundWithOpenAI(
+                          _inputController.text,
+                          _leftLanguage,
+                          instructionForLang(_leftLanguage),
+                          () {}, // Don't reveal (already visible)
+                          () {
+                            if (mounted) setState(() => _isTranslating = false);
+                          },
+                        );
+                      },
+                      isTextInLanguage:
+                          (text) => isTextInLanguage(
+                            text,
+                            _langLabels[_rightLanguage]!,
+                            _gemini,
+                          ),
+                    );
+                  },
 
-                onMicTap:
-                    () => _openRecordingCustom(
-                      from: _rightLanguage,
-                      to: _leftLanguage,
-                      isTopPanel: true,
-                    ),
+                  onMicTap:
+                      () => _openRecordingCustom(
+                        from: _rightLanguage,
+                        to: _leftLanguage,
+                        isTopPanel: true,
+                      ),
 
-                onPlaySound:
-                    () => _playSoundWithOpenAI(
-                      _translation,
-                      _rightLanguage,
-                      instructionForLang(_rightLanguage),
-                    ),
-              ),
-            ),
-            // Left overlay
-            Positioned(
-              top: halfH - switchSize / 2,
-              left: 16,
-              width: constraints.maxWidth / 2 + switchSize / 2 - 16,
-              child: Container(
-                height: switchSize,
-                decoration: BoxDecoration(
-                  color: textGrey,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    bottomLeft: Radius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-            // Output card
-            Positioned(
-              top: halfH - 20,
-              left: 16,
-              right: 16,
-              height: halfH + switchSize / 2,
-              child: TranslationOutputCard(
-                toLang: _rightLanguage,
-                fromLang: _leftLanguage,
-                key: outputKey,
-                controller: _inputController,
-                onMicTap:
-                    () => _openRecordingCustom(
-                      from: _leftLanguage,
-                      to: _rightLanguage,
-                      isTopPanel: false,
-                    ),
-                // ----- NEW: Stack Modal Editing
-                onEditTap: () {
-                  showEditTextModal(
-                    context: context,
-                    initialText: _inputController.text,
-                    fromLang: _leftLanguage,
-                    toLang: _rightLanguage,
-                    gemini: _gemini,
-                    onEdited: ({
-                      required String edited,
-                      required String translated,
-                    }) {
-                      setState(() {
-                        _inputController.text = edited; // The panel you edited
-                        _translation =
-                            translated; // The opposite panel auto-translate
-                      });
-                      _playSoundWithOpenAI(
-                        _translation, // Or edited, depending on which panel
-                        _rightLanguage, // The language of the translated output
+                  onPlaySound: () async {
+                    setState(() => _isAudioLoadingInput = true);
+                    try {
+                      await _playSoundWithOpenAI(
+                        _translation,
+                        _rightLanguage,
                         instructionForLang(_rightLanguage),
+                        () {},
+                        () {
+                          if (mounted)
+                            setState(() => _isAudioLoadingInput = false);
+                        },
                       );
-                    },
-                    isTextInLanguage:
-                        (text) => isTextInLanguage(
-                          text,
-                          _langLabels[_leftLanguage]!,
-                          _gemini,
-                        ),
-                  );
-                },
-
-                onCopy: () => _copyText(_inputController.text),
-                onPlaySound:
-                    () => _playSoundWithOpenAI(
-                      _inputController.text,
-                      _leftLanguage,
-                      instructionForLang(_leftLanguage),
-                    ),
+                    } catch (e) {
+                      if (mounted) setState(() => _isAudioLoadingInput = false);
+                    }
+                  },
+                ),
               ),
-            ),
-            // Right overlay
-            Positioned(
-              top: halfH - switchSize / 2,
-              left: constraints.maxWidth / 2 - switchSize / 4,
-              right: 16,
-              child: Container(
-                height: 50,
-                decoration: BoxDecoration(
-                  color: textGrey,
-                  borderRadius: BorderRadius.only(
-                    topRight: Radius.circular(8),
-                    bottomRight: Radius.circular(8),
+              // Left overlay
+
+              // Output card
+              Positioned(
+                top: halfH - 20,
+                left: 16,
+                right: 16,
+                height: halfH + switchSize / 2,
+                child: TranslationOutputCard(
+                  toLang: _rightLanguage,
+                  fromLang: _leftLanguage,
+                  key: outputKey,
+                  isBusy: _isTranslating, // <-- ADD THIS LINE!
+                  isAudioLoading: _isAudioLoadingOutput,
+                  controller: _inputController,
+                  onMicTap:
+                      () => _openRecordingCustom(
+                        from: _leftLanguage,
+                        to: _rightLanguage,
+                        isTopPanel: false,
+                      ),
+                  // ----- NEW: Stack Modal Editing
+                  onEditTap: () {
+                    showEditTextModal(
+                      context: context,
+                      initialText: _inputController.text,
+                      fromLang: _leftLanguage,
+                      toLang: _rightLanguage,
+                      gemini: _gemini,
+                      onEdited: ({
+                        required String edited,
+                        required String translated,
+                      }) {
+                        setState(() {
+                          _inputController.text =
+                              edited; // The panel you edited
+                          _translation =
+                              translated; // The opposite panel auto-translate
+                        });
+                        _playSoundWithOpenAI(
+                          _translation,
+                          _rightLanguage,
+                          instructionForLang(_rightLanguage),
+                          () {}, // Don't reveal (already visible)
+                          () {
+                            if (mounted) setState(() => _isTranslating = false);
+                          },
+                        );
+                      },
+                      isTextInLanguage:
+                          (text) => isTextInLanguage(
+                            text,
+                            _langLabels[_leftLanguage]!,
+                            _gemini,
+                          ),
+                    );
+                  },
+
+                  onCopy: () => _copyText(_inputController.text),
+                  onPlaySound: () async {
+                    setState(() => _isAudioLoadingOutput = true);
+                    try {
+                      await _playSoundWithOpenAI(
+                        _inputController.text,
+                        _leftLanguage,
+                        instructionForLang(_leftLanguage),
+                        () {},
+                        () {
+                          if (mounted)
+                            setState(() => _isAudioLoadingOutput = false);
+                        },
+                      );
+                    } catch (e) {
+                      if (mounted)
+                        setState(() => _isAudioLoadingOutput = false);
+                    }
+                  },
+                ),
+              ),
+              // Right overlay
+              Positioned(
+                top: halfH - switchSize / 2,
+                left: constraints.maxWidth / 2 - switchSize / 4,
+                right: 16,
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage(
+                        'assets/images/bg-dark.jpg',
+                      ), // For assets
+                      fit: BoxFit.cover,
+                    ),
+                    color: textGrey,
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
                   ),
                 ),
               ),
-            ),
-            // 4) Switch + flags row
-            Positioned(
-              top: halfH - switchSize / 2,
-              left: 16,
-              right: 16,
-              child: SizedBox(
-                height: switchSize,
-                child: Stack(
-                  children: [
-                    // Left language toggle
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 10.0),
-                        child: GestureDetector(
-                          onTap:
-                              () => setState(() {
+              // 4) Switch + flags row
+              Positioned(
+                top: halfH - switchSize / 2,
+                left: 26,
+                right: 26,
+                child: SizedBox(
+                  height: switchSize,
+                  child: Stack(
+                    children: [
+                      // Left language toggle
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10.0, top: 20),
+                          child: GestureDetector(
+                            onTap: () async {
+                              setState(() {
                                 _leftLanguage = _nextLanguage(
                                   _leftLanguage,
                                   _rightLanguage,
                                 );
-                              }),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ClipRRect(
-                                child: Image.asset(
-                                  flagAsset(_leftLanguage, whiteBorder: false),
-                                  width: flagSize,
-                                  height: flagSize,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              SizedBox(width: 5),
-                              Image.asset(
-                                _labelImages[_leftLanguage]!,
-                                height: flagSize,
-                                fit: BoxFit.contain,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Center(
-                      child: GestureDetector(
-                        onTap:
-                            () => setState(() {
-                              final tmpLang = _leftLanguage;
-                              _leftLanguage = _rightLanguage;
-                              _rightLanguage = tmpLang;
+                              });
+                              await autoTranslateOnLanguageChange(
+                                leftChanged: true,
+                              );
+                            },
 
-                              // Swap texts
-                              final tmpText = _inputController.text;
-                              _inputController.text = _translation;
-                              _translation = tmpText;
-                            }),
-                        child: Container(
-                          width: switchSize,
-                          height: switchSize,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(color: Colors.black26, blurRadius: 4),
-                            ],
-                            border: Border.all(color: Colors.black, width: 2),
-                          ),
-                          child: Center(
-                            child: Image.asset(
-                              'assets/images/switch.png',
-                              width: switchSize * 0.6,
-                              height: switchSize * 0.6,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Right language toggle
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 10.0, bottom: 8),
-                        child: GestureDetector(
-                          onTap:
-                              () => setState(() {
-                                // Skip whatever the left side is and advance _rightLanguage to the next
-                                _rightLanguage = _nextLanguage(
-                                  _rightLanguage,
-                                  _leftLanguage,
-                                );
-                              }),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            textDirection: TextDirection.rtl,
-                            children: [
-                              RotatedBox(
-                                quarterTurns: 2,
-                                child: ClipRRect(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ClipRRect(
                                   child: Image.asset(
                                     flagAsset(
-                                      _rightLanguage,
-                                      whiteBorder: true,
+                                      _leftLanguage,
+                                      whiteBorder: false,
                                     ),
                                     width: flagSize,
                                     height: flagSize,
                                     fit: BoxFit.cover,
                                   ),
                                 ),
-                              ),
-                              SizedBox(width: 5),
-                              RotatedBox(
-                                quarterTurns: 2,
-                                child: Image.asset(
-                                  _labelImages[_rightLanguage]!,
+                                SizedBox(width: 5),
+                                Image.asset(
+                                  _labelImages[_leftLanguage]!,
                                   height: flagSize,
                                   fit: BoxFit.contain,
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      Center(
+                        child: GestureDetector(
+                          onTap: () async {
+                            setState(() {
+                              final tmpLang = _leftLanguage;
+                              _leftLanguage = _rightLanguage;
+                              _rightLanguage = tmpLang;
+                              final tmpText = _inputController.text;
+                              _inputController.text = _translation;
+                              _translation = tmpText;
+                            });
+                            // Retranslate both sides to sync with swapped languages
+                            await autoTranslateOnLanguageChange(
+                              leftChanged: true,
+                            );
+                            await autoTranslateOnLanguageChange(
+                              leftChanged: false,
+                            );
+                          },
+
+                          child: Container(
+                            width: switchSize,
+                            height: switchSize,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black26, blurRadius: 4),
+                              ],
+                              border: Border.all(color: Colors.black, width: 2),
+                            ),
+                            child: Center(
+                              child: Image.asset(
+                                'assets/images/switch.png',
+                                width: switchSize * 0.6,
+                                height: switchSize * 0.6,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Right language toggle
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            right: 10.0,
+                            bottom: 30,
+                          ),
+                          child: GestureDetector(
+                            onTap: () async {
+                              setState(() {
+                                _rightLanguage = _nextLanguage(
+                                  _rightLanguage,
+                                  _leftLanguage,
+                                );
+                              });
+                              await autoTranslateOnLanguageChange(
+                                leftChanged: false,
+                              );
+                            },
+
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              textDirection: TextDirection.rtl,
+                              children: [
+                                RotatedBox(
+                                  quarterTurns: 2,
+                                  child: ClipRRect(
+                                    child: Image.asset(
+                                      flagAsset(
+                                        _rightLanguage,
+                                        whiteBorder: true,
+                                      ),
+                                      width: flagSize,
+                                      height: flagSize,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 5),
+                                RotatedBox(
+                                  quarterTurns: 2,
+                                  child: Image.asset(
+                                    _labelImages[_rightLanguage]!,
+                                    height: flagSize,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -691,6 +919,7 @@ class TranslationInputCard extends StatelessWidget {
   final VoidCallback? onPlaySound;
   final VoidCallback? onEditTap; // Add this line
   final VoidCallback? onMicTap;
+  final bool isAudioLoading; // <-- Add this
 
   const TranslationInputCard({
     super.key,
@@ -702,6 +931,8 @@ class TranslationInputCard extends StatelessWidget {
     this.onCopy,
     this.onPlaySound,
     this.onEditTap,
+    required this.isAudioLoading,
+
     this.onMicTap,
   });
 
@@ -710,23 +941,29 @@ class TranslationInputCard extends StatelessWidget {
     final double fontSize = calculateFontSize(text);
 
     return Container(
-      decoration: BoxDecoration(
-        color: textGrey,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      // Keep your border radius and any base color here
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+      clipBehavior:
+          Clip.antiAlias, // This ensures rounded corners for everything inside!
       child: Stack(
+        fit: StackFit.expand,
         children: [
+          // --- ZOOMED-IN BACKGROUND IMAGE ---
+          Positioned.fill(
+            child: Image.asset('assets/images/bg-dark.jpg', fit: BoxFit.cover),
+          ),
+          // --- FOREGROUND CONTENT (unchanged) ---
           // Scrollable, upside-down text, taking all space except for icons/mic
           Positioned.fill(
-            top: 100, // Give space at top for mic/icons
+            top: 100,
             bottom: dynamicInputBottom(fontSize),
             left: 16,
             right: 16,
             child: SingleChildScrollView(
-              reverse: true, // So scrolling starts from the bottom
+              reverse: true,
               physics: const BouncingScrollPhysics(),
               child: RotatedBox(
-                quarterTurns: 2, // Flip text upside down
+                quarterTurns: 2,
                 child: Align(
                   alignment: Alignment.bottomCenter,
                   child:
@@ -760,8 +997,8 @@ class TranslationInputCard extends StatelessWidget {
               child: GestureDetector(
                 onTap: onMicTap,
                 child: Container(
-                  width: 80,
-                  height: 80,
+                  width: 60,
+                  height: 60,
                   decoration: BoxDecoration(
                     image: DecorationImage(
                       image: AssetImage(flagAsset(toLang, whiteBorder: true)),
@@ -819,16 +1056,33 @@ class TranslationInputCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: onPlaySound,
-                  child: Transform.rotate(
-                    angle: math.pi,
-                    child: Image.asset(
-                      'assets/images/play-sound.png',
-                      width: 40,
-                      height: 40,
-                    ),
-                  ),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (isAudioLoading)
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.amber,
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: onPlaySound,
+                        child: Transform.rotate(
+                          angle: math.pi,
+                          child: Image.asset(
+                            'assets/images/play-sound.png',
+                            width: 40,
+                            height: 40,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -845,6 +1099,8 @@ class TranslationOutputCard extends StatelessWidget {
   final TextEditingController controller;
   final Future<void> Function() onMicTap;
   final VoidCallback? onEditTap;
+  final bool isBusy; // <-- Add this!
+  final bool isAudioLoading; // <-- Add this
   final VoidCallback? onCopy;
   final VoidCallback? onPlaySound;
   const TranslationOutputCard({
@@ -852,10 +1108,12 @@ class TranslationOutputCard extends StatelessWidget {
     required this.fromLang,
     required this.toLang,
     required this.controller,
+    required this.isBusy, // <-- Add this!
     required this.onMicTap,
     this.onEditTap,
     this.onCopy,
     this.onPlaySound,
+    required this.isAudioLoading,
   });
 
   @override
@@ -865,38 +1123,49 @@ class TranslationOutputCard extends StatelessWidget {
     // Estimate how much space the mic row uses (including icons), then pad bottom accordingly
     const double bottomReserved = 110; // mic + icons area
     return Container(
-      padding: dynamicOutputPadding(fontSize), // <== dynamic top padding
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
       ),
+      clipBehavior: Clip.antiAlias, // ensures borderRadius works on image!
       child: Stack(
         children: [
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/bg-bright.jpg',
+              fit: BoxFit.cover,
+            ),
+          ),
+
           // The scrollable, non-editable transcribed text
           Positioned.fill(
-            bottom: bottomReserved, // reserve space for mic/icons row
+            bottom: bottomReserved,
+            top: 100, // reserve space for mic/icons row
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: GestureDetector(
                 onTap: onEditTap,
                 child: Center(
-                  child: Text(
-                    capitalizeFirst(controller.text),
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.robotoCondensed(
-                      fontWeight: FontWeight.w500,
-                      fontSize: calculateFontSize(controller.text),
-                      color: Colors.black,
-                      height: 1,
-                    ),
-                  ),
+                  child:
+                      isBusy
+                          ? const Center(child: CircularProgressIndicator())
+                          : Text(
+                            capitalizeFirst(controller.text),
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.robotoCondensed(
+                              fontWeight: FontWeight.w500,
+                              fontSize: calculateFontSize(controller.text),
+                              color: Colors.black,
+                              height: 1,
+                            ),
+                          ),
                 ),
               ),
             ),
           ),
           // Mic+Flag at bottom center (rectangle, not circle)
           Positioned(
-            bottom: 25,
+            bottom: 50,
             left: 0,
             right: 0,
             child: GestureDetector(
@@ -906,8 +1175,8 @@ class TranslationOutputCard extends StatelessWidget {
                 children: [
                   Image.asset(
                     flagAsset(fromLang, whiteBorder: false),
-                    width: 80,
-                    height: 80,
+                    width: 60,
+                    height: 60,
                   ),
                   const Image(
                     image: AssetImage(
@@ -922,7 +1191,7 @@ class TranslationOutputCard extends StatelessWidget {
           ),
           // Edit/copy/play icons on left/right (unchanged)
           Positioned(
-            bottom: 25,
+            bottom: 50,
             left: 8,
             child: GestureDetector(
               onTap: onEditTap,
@@ -934,7 +1203,7 @@ class TranslationOutputCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 25,
+            bottom: 50,
             right: 8,
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -948,13 +1217,33 @@ class TranslationOutputCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: onPlaySound,
-                  child: Image.asset(
-                    'assets/images/play-sound.png',
-                    width: 40,
-                    height: 40,
-                  ),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (isAudioLoading)
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.amber,
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: onPlaySound,
+                        child: Transform.rotate(
+                          angle: math.pi,
+                          child: Image.asset(
+                            'assets/images/play-sound.png',
+                            width: 40,
+                            height: 40,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

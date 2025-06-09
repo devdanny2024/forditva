@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:forditva/services/chatgpt_service.dart';
+import 'package:forditva/widgets/cropper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -25,6 +28,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   // Image picking
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
+  File? _croppedImageFile; // The cropped image (if any)
 
   // AI service & state
   final ChatGptService _chat = ChatGptService();
@@ -52,10 +56,39 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     Language.de: 'DE',
     Language.hu: 'HU',
   };
+  String stripHtmlCodeFence(String input) {
+    // Remove leading ```html or ```HTML and trailing ```
+    final regex = RegExp(
+      r'^```html\s*([\s\S]*?)```$',
+      multiLine: true,
+      caseSensitive: false,
+    );
+    final match = regex.firstMatch(input.trim());
+    if (match != null) {
+      return match.group(1)!.trim();
+    }
+    // If not a code fence but starts with ```html or ends with ```
+    if (input.trim().startsWith('```html')) {
+      return input
+          .trim()
+          .substring(7)
+          .trim()
+          .replaceAll(RegExp(r'```$'), '')
+          .trim();
+    }
+    if (input.trim().startsWith('```')) {
+      return input
+          .trim()
+          .substring(3)
+          .trim()
+          .replaceAll(RegExp(r'```$'), '')
+          .trim();
+    }
+    return input.trim();
+  }
 
   // Placeholder text for preview
-  static const String _placeholderText =
-      'Szeretnék elmenni a vasútállomásra, de nem ismerem az utat. Hová kell mennem';
+  static const String _placeholderText = '';
 
   bool _zoomable = false;
   bool _interpretMode = false; // false = translate, true = interpret
@@ -103,13 +136,77 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       _rightLang = temp;
       // Optionally swap result direction (not strictly needed for image)
     });
-    if (_imageFile != null) _processImage();
+    if (_imageFile != null) _processImage(imageFile: _imageFile!);
   }
 
-  Future<void> _processImage() async {
-    final File? file = _imageFile;
-    if (file == null) return;
+  Widget _formattedResult(String result) {
+    // Try to decode JSON (translation array)
+    try {
+      final items = json.decode(result) as List;
+      String clean(String s) => s.replaceAll(RegExp(r'[^\w\s]'), '');
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children:
+            items.map<Widget>((item) {
+              final orig = clean(item['o'] ?? '');
+              final trans = clean(item['t'] ?? '');
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      orig,
+                      style: GoogleFonts.robotoCondensed(
+                        fontSize: 26,
+                        color: navRed,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      trans,
+                      style: GoogleFonts.robotoCondensed(
+                        fontSize: 24,
+                        color: navGreen,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+      );
+    } catch (_) {
+      // If not JSON, check if it's HTML (possibly inside code fence)
+      String stripped = stripHtmlCodeFence(result);
+      if (stripped.trim().startsWith('<')) {
+        return Html(
+          data: stripped,
+          style: {
+            "h1": Style(
+              color: navRed,
+              fontSize: FontSize(28),
+              fontWeight: FontWeight.bold,
+            ),
+            "h2": Style(
+              color: navRed,
+              fontSize: FontSize(24),
+              fontWeight: FontWeight.bold,
+            ),
+            "strong": Style(color: navRed),
+            "li": Style(color: navGreen, fontSize: FontSize(20)),
+          },
+        );
+      } else {
+        return Text(
+          stripped,
+          style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
+        );
+      }
+    }
+  }
 
+  Future<void> _processImage({required File imageFile}) async {
     setState(() {
       _isProcessing = true;
       _resultText = '';
@@ -117,11 +214,11 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
     try {
       final out = await _chat.processImage(
-        imageFile: file,
+        imageFile: imageFile,
         translate: !_interpretMode,
         interpret: _interpretMode,
-        fromLangCode: _langCode(_rightLang), // right is input lang!
-        toLangCode: _langCode(_leftLang), // left is output lang!
+        fromLangCode: _langCode(_rightLang),
+        toLangCode: _langCode(_leftLang),
       );
       setState(() => _resultText = out.trim());
     } catch (e) {
@@ -138,8 +235,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       imageQuality: 70,
     );
     if (picked != null) {
-      setState(() => _imageFile = File(picked.path));
-      await _processImage();
+      File file = File(picked.path);
+      final cropped = await Navigator.push<File?>(
+        context,
+        MaterialPageRoute(builder: (_) => ImageCropperPage(imageFile: file)),
+      );
+
+      setState(() {
+        _imageFile = file;
+        _croppedImageFile = cropped;
+      });
+      await _processImage(imageFile: cropped ?? file);
     }
   }
 
@@ -150,8 +256,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       imageQuality: 70,
     );
     if (picked != null) {
-      setState(() => _imageFile = File(picked.path));
-      await _processImage();
+      File file = File(picked.path);
+      final cropped = await Navigator.push<File?>(
+        context,
+        MaterialPageRoute(builder: (_) => ImageCropperPage(imageFile: file)),
+      );
+
+      setState(() {
+        _imageFile = file;
+        _croppedImageFile = cropped;
+      });
+      await _processImage(imageFile: cropped ?? file);
     }
   }
 
@@ -165,7 +280,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
     return Container(
       color: textGrey,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.only(top: 30),
       child: Column(
         children: [
           // ─── Top & Bottom panels separated by draggable divider ───
@@ -188,10 +303,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     // ─── Top panel ──────────────────────────────
                     SizedBox(
                       width: boxW,
-                      height: topH,
+                      height: 200,
                       child: Stack(
                         children: [
-                          // ─── The white rounded box (image or placeholder) ─────────
+                          // White rounded box with image or placeholder
                           Positioned.fill(
                             child: Container(
                               decoration: BoxDecoration(
@@ -203,17 +318,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child:
-                                  _imageFile != null
+                                  (_croppedImageFile ?? _imageFile) != null
                                       ? ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
                                         child: Image.file(
-                                          _imageFile!,
+                                          _croppedImageFile ?? _imageFile!,
                                           width: boxW,
                                           height: topH,
                                           fit: BoxFit.cover,
                                         ),
                                       )
-                                      : Column(
+                                      : /* ... your placeholder content here ... */ Column(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
@@ -221,7 +336,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                             onTap: _takePhoto,
                                             child: const Icon(
                                               Icons.camera_alt,
-                                              size: 200,
+                                              size: 80,
                                               color: navRed,
                                             ),
                                           ),
@@ -234,7 +349,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                               TextSpan(
                                                 style:
                                                     GoogleFonts.robotoCondensed(
-                                                      fontSize: 25,
+                                                      fontSize: 20,
                                                       color: navRed,
                                                     ),
                                                 children: [
@@ -268,31 +383,24 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       ),
                             ),
                           ),
-
-                          // ─── The cancel “X” button, only when there’s an image ──────
-                          if (_imageFile != null)
+                          // New "Close" (X) button at bottom left when there's an image
+                          if ((_croppedImageFile ?? _imageFile) != null)
                             Positioned(
-                              top: 8,
-                              right: 8,
+                              bottom: 8,
+                              left: 8,
                               child: GestureDetector(
                                 onTap: () {
                                   setState(() {
                                     _imageFile = null;
+                                    _croppedImageFile = null;
                                     _resultText = '';
                                     _isProcessing = false;
                                   });
                                 },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  padding: const EdgeInsets.all(4),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
+                                child: Image.asset(
+                                  'assets/images/close.png',
+                                  width: 32,
+                                  height: 32,
                                 ),
                               ),
                             ),
@@ -328,7 +436,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     // ─── Bottom panel with auto-sized AI response ───
                     SizedBox(
                       width: boxW,
-                      height: bottomH,
+                      height: 400,
                       child: LayoutBuilder(
                         builder: (ctx2, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
@@ -363,12 +471,18 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                               // white background
                               Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
                                   border: Border.all(
                                     color: Colors.black,
                                     width: 2,
                                   ),
                                   borderRadius: BorderRadius.circular(8),
+                                  // Remove the plain color and add background image
+                                  image: DecorationImage(
+                                    image: AssetImage(
+                                      'assets/images/bg-bright.jpg',
+                                    ),
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                               ),
 
@@ -386,14 +500,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     thumbVisibility: true,
                                     child: SingleChildScrollView(
                                       controller: _scrollController,
-                                      child: Text(
+                                      child: _formattedResult(
                                         _resultText.isNotEmpty
                                             ? _resultText
                                             : _placeholderText,
-                                        style: GoogleFonts.robotoCondensed(
-                                          fontSize: chosenSize,
-                                          fontWeight: FontWeight.w500,
-                                        ),
                                       ),
                                     ),
                                   ),
@@ -463,7 +573,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           () => setState(() {
                                             _interpretMode = !_interpretMode;
                                             if (_imageFile != null) {
-                                              _processImage();
+                                              _processImage(
+                                                imageFile: _imageFile!,
+                                              );
                                             }
                                           }),
                                       child: Icon(
@@ -501,7 +613,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                   onTap:
                       () => setState(() {
                         _rightLang = _next(_rightLang, _leftLang);
-                        if (_imageFile != null) _processImage();
+                        if (_imageFile != null)
+                          _processImage(imageFile: _imageFile!);
                       }),
                   child: Row(
                     children: [
@@ -537,7 +650,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                   onTap:
                       () => setState(() {
                         _leftLang = _next(_leftLang, _rightLang);
-                        if (_imageFile != null) _processImage();
+                        if (_imageFile != null)
+                          _processImage(imageFile: _imageFile!);
                       }),
                   child: Row(
                     children: [
