@@ -38,16 +38,16 @@ String capitalizeFirst(String text) {
 
 double dynamicInputBottom(double fontSize) {
   // bottom goes from 120 (for min size) to 40 (for max size)
-  double minPadding = 160;
-  double maxPadding = 80;
+  double minPadding = 80;
+  double maxPadding = 100;
   double normalized = (50 - fontSize) / (50 - 20); // fontSize 50→0, 20→1
   return minPadding + (maxPadding - minPadding) * normalized;
 }
 
 EdgeInsets dynamicOutputPadding(double fontSize) {
   // top goes from 110 (min size) to 40 (max size)
-  double minPadding = 150;
-  double maxPadding = 40;
+  double minPadding = 60;
+  double maxPadding = 80;
   double normalized = (50 - fontSize) / (50 - 20); // fontSize 50→0, 20→1
   double top = minPadding + (maxPadding - minPadding) * normalized;
   return EdgeInsets.fromLTRB(16, top, 16, 16);

@@ -1,3 +1,5 @@
+import 'dart:ui'; // For Locale
+
 enum Language { hungarian, german, english }
 
 extension LanguageCode on Language {
@@ -46,5 +48,17 @@ extension LanguageExtension on Language {
       idx = (idx + 1) % list.length;
     } while (list[idx] == other);
     return list[idx];
+  }
+}
+
+List<Language> getInitialLangPair(Locale locale) {
+  switch (locale.languageCode.toLowerCase()) {
+    case 'hu':
+      return [Language.hungarian, Language.german];
+    case 'de':
+      return [Language.german, Language.hungarian];
+    case 'en':
+    default:
+      return [Language.english, Language.hungarian];
   }
 }

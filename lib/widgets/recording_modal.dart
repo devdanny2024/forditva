@@ -283,6 +283,24 @@ class _RecordingModalState extends State<RecordingModal> {
         ),
         child: Stack(
           children: [
+            // Close (X) button at top right
+            Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: () {
+                  // Always call onTranscribed with empty, as per your modal logic
+                  widget.onTranscribed('');
+                  Navigator.of(context).pop();
+                },
+                child: Image.asset(
+                  'assets/images/close.png',
+                  width: 28,
+                  height: 28,
+                ),
+              ),
+            ),
+
             Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,

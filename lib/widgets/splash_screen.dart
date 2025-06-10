@@ -32,7 +32,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 CrossAxisAlignment.center, // Center horizontally
             children: [
               Padding(
-                padding: const EdgeInsets.only(top: 60),
+                padding: const EdgeInsets.only(top: 150),
                 child: Image.asset(
                   'assets/splash/forditva-logo.png',
                   width: 300,
@@ -43,7 +43,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 padding: const EdgeInsets.only(bottom: 60),
                 child: Image.asset(
                   'assets/splash/Logo-WIU.png',
-                  width: 300,
+                  width: 250,
                   fit: BoxFit.contain,
                 ),
               ),

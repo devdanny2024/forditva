@@ -44,7 +44,7 @@ class _EditTextModalState extends State<EditTextModal> {
   final String _error = '';
   late RecorderController _recorderController;
   String? _audioPath;
-  final String _sttTranscript = '';
+  // final String _sttTranscript = ''; // This variable is not used
   final _sttService = GoogleSpeechToTextService(
     dotenv.env['GOOGLE_STT_KEY']!,
   ); // Make sure to pass your key!
@@ -62,11 +62,37 @@ class _EditTextModalState extends State<EditTextModal> {
     super.initState();
     _recorderController = RecorderController();
     _audioRecorder = AudioRecorder();
+    widget.controller.addListener(_moveCursorToEnd);
+
+    // Use addPostFrameCallback to set cursor after the initial build and focus
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // Ensure the widget is still in the tree
+        _moveCursorToEnd();
+      }
+    });
+  }
+
+  void _moveCursorToEnd() {
+    // Only update selection if the text is not empty and the current selection is not already at the end.
+    // This helps prevent unnecessary rebuilds and potential cursor jumpiness.
+    final text = widget.controller.text;
+    if (text.isNotEmpty) {
+      final currentSelection = widget.controller.selection;
+      if (currentSelection.baseOffset != text.length ||
+          currentSelection.extentOffset != text.length) {
+        widget.controller.selection = TextSelection.collapsed(
+          offset: text.length,
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
     _recorderController.dispose();
+    widget.controller.removeListener(_moveCursorToEnd);
+    _audioRecorder.dispose(); // Dispose of the audio recorder
     super.dispose();
   }
 
@@ -130,9 +156,8 @@ class _EditTextModalState extends State<EditTextModal> {
             ('${widget.controller.text.trim()} ${transcript.trim()}').trim();
 
         // Force cursor to end of field (nice UX)
-        widget.controller.selection = TextSelection.fromPosition(
-          TextPosition(offset: widget.controller.text.length),
-        );
+        // This is handled by the listener, but an explicit call here after text change is also fine
+        _moveCursorToEnd();
 
         setState(() {}); // Refresh font size, etc.
 
@@ -143,9 +168,11 @@ class _EditTextModalState extends State<EditTextModal> {
         _isRecording = false;
         _isSttLoading = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Recording failed.")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Recording failed.")));
+      }
     }
   }
 
@@ -179,7 +206,9 @@ class _EditTextModalState extends State<EditTextModal> {
     );
     setState(() => _loading = false);
     widget.onEdited(edited: inputText, translated: translated);
-    Navigator.of(context).pop();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -227,7 +256,7 @@ class _EditTextModalState extends State<EditTextModal> {
                             isDense: true,
                           ),
                           onChanged: (_) {
-                            setState(() {});
+                            // setState(() {}); // No need to call setState here, _moveCursorToEnd handles it implicitly for selection
                           },
                         ),
                       ),
@@ -304,7 +333,8 @@ class _EditTextModalState extends State<EditTextModal> {
                                     width: 50,
                                     height: 50,
                                   )
-                                  : Icon(
+                                  : const Icon(
+                                    // Added const for better performance
                                     Icons.mic,
                                     color: Colors.black,
                                     size: 50,

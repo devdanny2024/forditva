@@ -80,6 +80,8 @@ String flagAsset(Language lang, {required bool whiteBorder}) {
   }
 }
 
+bool _isAudioPlaying = false;
+
 class TextPage extends StatefulWidget {
   const TextPage({super.key});
 
@@ -98,6 +100,11 @@ class _TextPageState extends State<TextPage> {
   bool _isTranslating = false;
   bool _isAudioLoadingInput = false; // For the input card play button
   bool _isAudioLoadingOutput = false; // For the output card play button
+  ap.AudioPlayer? _audioPlayer;
+  bool _isInputPlaying = false;
+  bool _isOutputPlaying = false;
+  ap.AudioPlayer? _inputAudioPlayer;
+  ap.AudioPlayer? _outputAudioPlayer;
 
   // ▶︎ your Gemini client
   final GeminiTranslator _gemini = GeminiTranslator();
@@ -109,86 +116,160 @@ class _TextPageState extends State<TextPage> {
     Language.german: 'DE',
     Language.english: 'EN',
   };
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = Localizations.localeOf(context);
+    final pair = getInitialLangPair(locale);
+    setState(() {
+      _leftLanguage = pair[0];
+      _rightLanguage = pair[1];
+    });
+  }
+
+  Future<void> _playInputSound() async {
+    await _inputAudioPlayer?.stop();
+    setState(() {
+      _isInputPlaying = true;
+    });
+    _inputAudioPlayer ??= ap.AudioPlayer();
+
+    // <--- THIS is what you need:
+    final file = await _ttsService.synthesizeSpeech(
+      text: _translation,
+      voice: "onyx",
+      instructions: instructionForLang(_rightLanguage),
+    );
+    // <--- ^^^
+
+    late final StreamSubscription sub;
+    sub = _inputAudioPlayer!.onPlayerStateChanged.listen((state) {
+      if (state == ap.PlayerState.completed ||
+          state == ap.PlayerState.stopped) {
+        setState(() => _isInputPlaying = false);
+        sub.cancel();
+      }
+    });
+    await _inputAudioPlayer!.play(ap.DeviceFileSource(file.path));
+  }
+
+  Future<void> _stopInputSound() async {
+    await _inputAudioPlayer?.stop();
+    setState(() => _isInputPlaying = false);
+  }
+
+  Future<void> _playOutputSound() async {
+    await _outputAudioPlayer?.stop();
+    setState(() {
+      _isOutputPlaying = true;
+    });
+    _outputAudioPlayer ??= ap.AudioPlayer();
+
+    final file = await _ttsService.synthesizeSpeech(
+      text: _inputController.text,
+      voice: "onyx",
+      instructions: instructionForLang(_leftLanguage),
+    );
+
+    late final StreamSubscription sub;
+    sub = _outputAudioPlayer!.onPlayerStateChanged.listen((state) {
+      if (state == ap.PlayerState.completed ||
+          state == ap.PlayerState.stopped) {
+        setState(() => _isOutputPlaying = false);
+        sub.cancel();
+      }
+    });
+    await _outputAudioPlayer!.play(ap.DeviceFileSource(file.path));
+  }
+
+  Future<void> _stopOutputSound() async {
+    await _outputAudioPlayer?.stop();
+    setState(() => _isOutputPlaying = false);
+  }
 
   Future<void> _playSoundWithOpenAI(
     String text,
     Language lang,
     String instructions,
-    VoidCallback onStart, // New: called when audio STARTS
-    VoidCallback onDone, // New: called when audio COMPLETES
+    VoidCallback onStart,
+    VoidCallback onDone,
   ) async {
     try {
-      print("[TTS] Starting synthesis...");
-      const voice = "onyx";
+      _audioPlayer ??= ap.AudioPlayer();
+      await _audioPlayer!.stop();
 
       final file = await _ttsService.synthesizeSpeech(
         text: text,
-        voice: voice,
+        voice: "onyx",
         instructions: instructions,
       );
-
       if (!await file.exists() || (await file.length()) == 0) {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text("TTS failed: ${file.path}")));
         }
+        setState(() => _isAudioPlaying = false);
         onDone();
         return;
       }
 
-      final player = ap.AudioPlayer();
-      bool revealed = false;
-
-      StreamSubscription<ap.PlayerState>? stateSub;
-      stateSub = player.onPlayerStateChanged.listen((state) {
-        if (state == ap.PlayerState.playing && !revealed) {
-          revealed = true;
-          onStart(); // Reveal text as soon as audio starts!
+      late final StreamSubscription sub;
+      sub = _audioPlayer!.onPlayerStateChanged.listen((state) {
+        if (state == ap.PlayerState.playing) {
+          setState(() => _isAudioPlaying = true);
+          onStart();
         }
         if (state == ap.PlayerState.completed) {
-          onDone(); // Hide spinner (if you want to after playback ends)
-          stateSub?.cancel();
+          setState(() => _isAudioPlaying = false);
+          onDone();
+          sub.cancel();
+        }
+        if (state == ap.PlayerState.stopped) {
+          setState(() => _isAudioPlaying = false);
+          onDone();
+          sub.cancel();
         }
       });
 
-      await player.play(ap.DeviceFileSource(file.path));
-    } catch (e, stack) {
+      await _audioPlayer!.play(ap.DeviceFileSource(file.path));
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('TTS failed: $e')));
       }
+      setState(() => _isAudioPlaying = false);
       onDone();
     }
   }
 
   Future<void> _autoPlayInputTTS() async {
-    if (mounted) setState(() => _isAudioLoadingInput = true);
-    await _playSoundWithOpenAI(
-      _translation, // or whichever text you want to play
-      _rightLanguage,
-      instructionForLang(_rightLanguage),
-      () {}, // onStart
-      () {
-        if (mounted) setState(() => _isAudioLoadingInput = false);
-      },
-    );
+    await _inputAudioPlayer?.stop();
+    setState(() {
+      _isInputPlaying = true;
+      _isOutputPlaying = false;
+      _isAudioLoadingInput = true;
+    });
+    await _playInputSound(); // handles file and plays
+    setState(() {
+      _isAudioLoadingInput = false;
+      _isInputPlaying = false; // will also be set in the listener
+    });
   }
 
   Future<void> _autoPlayOutputTTS() async {
-    if (mounted) {
-      setState(() => _isAudioLoadingOutput = true);
-    }
-    await _playSoundWithOpenAI(
-      _inputController.text,
-      _leftLanguage,
-      instructionForLang(_leftLanguage),
-      () {}, // onStart
-      () {
-        if (mounted) setState(() => _isAudioLoadingOutput = false);
-      },
-    );
+    await _outputAudioPlayer?.stop();
+    setState(() {
+      _isOutputPlaying = true;
+      _isInputPlaying = false;
+      _isAudioLoadingOutput = true;
+    });
+    await _playOutputSound();
+    setState(() {
+      _isAudioLoadingOutput = false;
+      _isOutputPlaying = false; // will also be set in the listener
+    });
   }
 
   Future<void> autoTranslateOnLanguageChange({bool leftChanged = true}) async {
@@ -224,15 +305,7 @@ class _TextPageState extends State<TextPage> {
         _inputController.text = result;
         _isTranslating = false;
       });
-      await _playSoundWithOpenAI(
-        _inputController.text,
-        _leftLanguage,
-        instructionForLang(_leftLanguage),
-        () {}, // onStart
-        () {
-          if (mounted) setState(() => _isAudioLoadingOutput = false);
-        },
-      );
+      await _autoPlayOutputTTS(); // <-- use this!
     } else {
       sourceText = _inputController.text;
       fromLang = _leftLanguage;
@@ -253,15 +326,7 @@ class _TextPageState extends State<TextPage> {
         _translation = result;
         _isTranslating = false;
       });
-      await _playSoundWithOpenAI(
-        _translation,
-        _rightLanguage,
-        instructionForLang(_rightLanguage),
-        () {}, // onStart
-        () {
-          if (mounted) setState(() => _isAudioLoadingInput = false);
-        },
-      );
+      await _autoPlayInputTTS(); // <-- use this!
     }
   }
 
@@ -558,6 +623,10 @@ class _TextPageState extends State<TextPage> {
 
   @override
   void dispose() {
+    _audioPlayer?.dispose();
+
+    _inputAudioPlayer?.dispose();
+    _outputAudioPlayer?.dispose();
     super.dispose();
   }
 
@@ -584,6 +653,9 @@ class _TextPageState extends State<TextPage> {
                   key: inputKey,
                   text: _translation,
                   isBusy: _isTranslating,
+                  isAudioPlaying: _isInputPlaying,
+                  onPlaySound: _playInputSound,
+                  onStopSound: _stopInputSound,
                   isAudioLoading: _isAudioLoadingInput,
 
                   // ----- NEW: Stack Modal Editing
@@ -628,24 +700,6 @@ class _TextPageState extends State<TextPage> {
                         to: _leftLanguage,
                         isTopPanel: true,
                       ),
-
-                  onPlaySound: () async {
-                    setState(() => _isAudioLoadingInput = true);
-                    try {
-                      await _playSoundWithOpenAI(
-                        _translation,
-                        _rightLanguage,
-                        instructionForLang(_rightLanguage),
-                        () {},
-                        () {
-                          if (mounted)
-                            setState(() => _isAudioLoadingInput = false);
-                        },
-                      );
-                    } catch (e) {
-                      if (mounted) setState(() => _isAudioLoadingInput = false);
-                    }
-                  },
                 ),
               ),
               // Left overlay
@@ -657,11 +711,14 @@ class _TextPageState extends State<TextPage> {
                 right: 16,
                 height: halfH + switchSize / 2,
                 child: TranslationOutputCard(
-                  toLang: _rightLanguage,
                   fromLang: _leftLanguage,
+                  toLang: _rightLanguage,
                   key: outputKey,
-                  isBusy: _isTranslating, // <-- ADD THIS LINE!
+                  isBusy: _isTranslating,
                   isAudioLoading: _isAudioLoadingOutput,
+                  isAudioPlaying: _isOutputPlaying,
+                  onPlaySound: _playOutputSound,
+                  onStopSound: _stopOutputSound,
                   controller: _inputController,
                   onMicTap:
                       () => _openRecordingCustom(
@@ -707,24 +764,6 @@ class _TextPageState extends State<TextPage> {
                   },
 
                   onCopy: () => _copyText(_inputController.text),
-                  onPlaySound: () async {
-                    setState(() => _isAudioLoadingOutput = true);
-                    try {
-                      await _playSoundWithOpenAI(
-                        _inputController.text,
-                        _leftLanguage,
-                        instructionForLang(_leftLanguage),
-                        () {},
-                        () {
-                          if (mounted)
-                            setState(() => _isAudioLoadingOutput = false);
-                        },
-                      );
-                    } catch (e) {
-                      if (mounted)
-                        setState(() => _isAudioLoadingOutput = false);
-                    }
-                  },
                 ),
               ),
               // Right overlay
@@ -764,18 +803,14 @@ class _TextPageState extends State<TextPage> {
                         child: Padding(
                           padding: const EdgeInsets.only(left: 10.0, top: 20),
                           child: GestureDetector(
-                            onTap: () async {
+                            onTap: () {
                               setState(() {
-                                _leftLanguage = _nextLanguage(
-                                  _leftLanguage,
+                                _leftLanguage = _leftLanguage.next(
                                   _rightLanguage,
                                 );
                               });
-                              await autoTranslateOnLanguageChange(
-                                leftChanged: true,
-                              );
+                              autoTranslateOnLanguageChange(leftChanged: true);
                             },
-
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -784,7 +819,7 @@ class _TextPageState extends State<TextPage> {
                                     flagAsset(
                                       _leftLanguage,
                                       whiteBorder: false,
-                                    ),
+                                    ), // White border
                                     width: flagSize,
                                     height: flagSize,
                                     fit: BoxFit.cover,
@@ -792,7 +827,7 @@ class _TextPageState extends State<TextPage> {
                                 ),
                                 SizedBox(width: 5),
                                 Image.asset(
-                                  _labelImages[_leftLanguage]!,
+                                  'assets/images/${_leftLanguage.label}-${_leftLanguage.label}.png', // e.g. EN-EN.png
                                   height: flagSize,
                                   fit: BoxFit.contain,
                                 ),
@@ -801,9 +836,10 @@ class _TextPageState extends State<TextPage> {
                           ),
                         ),
                       ),
+                      // Switch button
                       Center(
                         child: GestureDetector(
-                          onTap: () async {
+                          onTap: () {
                             setState(() {
                               final tmpLang = _leftLanguage;
                               _leftLanguage = _rightLanguage;
@@ -812,13 +848,9 @@ class _TextPageState extends State<TextPage> {
                               _inputController.text = _translation;
                               _translation = tmpText;
                             });
-                            // Retranslate both sides to sync with swapped languages
-                            await autoTranslateOnLanguageChange(
-                              leftChanged: true,
-                            );
-                            await autoTranslateOnLanguageChange(
-                              leftChanged: false,
-                            );
+                            // Only update translations. Do NOT call any _playSoundWithOpenAI here!
+                            autoTranslateOnLanguageChange(leftChanged: true);
+                            autoTranslateOnLanguageChange(leftChanged: false);
                           },
 
                           child: Container(
@@ -851,18 +883,14 @@ class _TextPageState extends State<TextPage> {
                             bottom: 30,
                           ),
                           child: GestureDetector(
-                            onTap: () async {
+                            onTap: () {
                               setState(() {
-                                _rightLanguage = _nextLanguage(
-                                  _rightLanguage,
+                                _rightLanguage = _rightLanguage.next(
                                   _leftLanguage,
                                 );
                               });
-                              await autoTranslateOnLanguageChange(
-                                leftChanged: false,
-                              );
+                              autoTranslateOnLanguageChange(leftChanged: false);
                             },
-
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               textDirection: TextDirection.rtl,
@@ -874,7 +902,7 @@ class _TextPageState extends State<TextPage> {
                                       flagAsset(
                                         _rightLanguage,
                                         whiteBorder: true,
-                                      ),
+                                      ), // White border
                                       width: flagSize,
                                       height: flagSize,
                                       fit: BoxFit.cover,
@@ -885,7 +913,7 @@ class _TextPageState extends State<TextPage> {
                                 RotatedBox(
                                   quarterTurns: 2,
                                   child: Image.asset(
-                                    _labelImages[_rightLanguage]!,
+                                    'assets/images/${_rightLanguage.label}-${_rightLanguage.label}.png',
                                     height: flagSize,
                                     fit: BoxFit.contain,
                                   ),
@@ -920,6 +948,8 @@ class TranslationInputCard extends StatelessWidget {
   final VoidCallback? onEditTap; // Add this line
   final VoidCallback? onMicTap;
   final bool isAudioLoading; // <-- Add this
+  final bool isAudioPlaying;
+  final VoidCallback? onStopSound;
 
   const TranslationInputCard({
     super.key,
@@ -932,7 +962,8 @@ class TranslationInputCard extends StatelessWidget {
     this.onPlaySound,
     this.onEditTap,
     required this.isAudioLoading,
-
+    required this.isAudioPlaying,
+    this.onStopSound,
     this.onMicTap,
   });
 
@@ -1059,16 +1090,22 @@ class TranslationInputCard extends StatelessWidget {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    if (isAudioLoading)
-                      SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.amber,
-                          ),
-                        ),
+                    // if (isAudioLoading)
+                    //   SizedBox(
+                    //     width: 30,
+                    //     height: 30,
+                    //     child: CircularProgressIndicator(
+                    //       strokeWidth: 2,
+                    //       valueColor: AlwaysStoppedAnimation<Color>(
+                    //         Colors.amber,
+                    //       ),
+                    //     ),
+                    //   )
+                    // else
+                    if (isAudioPlaying)
+                      GestureDetector(
+                        onTap: onStopSound,
+                        child: Icon(Icons.stop, size: 40, color: Colors.red),
                       )
                     else
                       GestureDetector(
@@ -1103,6 +1140,9 @@ class TranslationOutputCard extends StatelessWidget {
   final bool isAudioLoading; // <-- Add this
   final VoidCallback? onCopy;
   final VoidCallback? onPlaySound;
+  final bool isAudioPlaying;
+  final VoidCallback? onStopSound;
+
   const TranslationOutputCard({
     super.key,
     required this.fromLang,
@@ -1113,6 +1153,8 @@ class TranslationOutputCard extends StatelessWidget {
     this.onEditTap,
     this.onCopy,
     this.onPlaySound,
+    required this.isAudioPlaying,
+    this.onStopSound,
     required this.isAudioLoading,
   });
 
@@ -1220,16 +1262,22 @@ class TranslationOutputCard extends StatelessWidget {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    if (isAudioLoading)
-                      SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.amber,
-                          ),
-                        ),
+                    // if (isAudioLoading)
+                    //   SizedBox(
+                    //     width: 30,
+                    //     height: 30,
+                    //     child: CircularProgressIndicator(
+                    //       strokeWidth: 2,
+                    //       valueColor: AlwaysStoppedAnimation<Color>(
+                    //         Colors.amber,
+                    //       ),
+                    //     ),
+                    //   )
+                    // else
+                    if (isAudioPlaying)
+                      GestureDetector(
+                        onTap: onStopSound,
+                        child: Icon(Icons.stop, size: 40, color: Colors.red),
                       )
                     else
                       GestureDetector(

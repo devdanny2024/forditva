@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/db/database.dart';
+import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/utils/utils.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -14,8 +15,6 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/gemini_translation_service.dart';
 import '../services/lingvanex_translation_service.dart';
-
-enum Language { hu, en, de }
 
 const Color navRed = Color(0xFFCD2A3E);
 
@@ -48,25 +47,50 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   String _explanationLevel = 'A2'; // default level
   late final AppDatabase _db;
   final bool _skipDebounce = false;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = Localizations.localeOf(context);
+    final pair = getInitialLangPair(locale);
+    setState(() {
+      _leftLang = pair[0];
+      _rightLang = pair[1];
+    });
+  }
+
+  Language _leftLang = Language.english;
+  Language _rightLang = Language.hungarian;
+
+  final Map<Language, String> _flagPaths = {
+    Language.english: 'assets/flags/EN_BW_LS.png',
+    Language.german: 'assets/flags/DE_BW_LS.png',
+    Language.hungarian: 'assets/flags/HU_BW_LS.png',
+  };
+
+  final Map<Language, String> _langLabels = {
+    Language.english: 'EN',
+    Language.german: 'DE',
+    Language.hungarian: 'HU',
+  };
 
   String _localeFor(Language lang) {
     switch (lang) {
-      case Language.en:
+      case Language.english:
         return 'en-US';
-      case Language.de:
+      case Language.german:
         return 'de-DE';
-      case Language.hu:
+      case Language.hungarian:
         return 'hu-HU';
     }
   }
 
   String _translatingText(Language lang) {
     switch (lang) {
-      case Language.hu:
+      case Language.hungarian:
         return 'Fordítás…';
-      case Language.de:
+      case Language.german:
         return 'Übersetzen…';
-      case Language.en:
+      case Language.english:
       default:
         return 'Translating…';
     }
@@ -211,20 +235,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   final TextEditingController _inputController = TextEditingController();
   String _translatedText = '';
 
-  Language _leftLang = Language.en;
-  Language _rightLang = Language.hu;
-
-  final Map<Language, String> _flagPaths = {
-    Language.en: 'assets/flags/EN_BW_LS.png',
-    Language.de: 'assets/flags/DE_BW_LS.png',
-    Language.hu: 'assets/flags/HU_BW_LS.png',
-  };
-
-  final Map<Language, String> _langLabels = {
-    Language.en: 'EN',
-    Language.de: 'DE',
-    Language.hu: 'HU',
-  };
   void _switchLanguages() {
     setState(() {
       final tempLang = _leftLang;
@@ -374,7 +384,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   Language _next(Language current, Language other) {
-    final list = [Language.hu, Language.de, Language.en];
+    final list = [Language.hungarian, Language.german, Language.english];
     int i = list.indexOf(current);
     Language next = list[(i + 1) % list.length];
     if (next == other) {
@@ -811,9 +821,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
   String _placeholderForLang(Language lang) {
     switch (lang) {
-      case Language.hu:
+      case Language.hungarian:
         return "Kezdje el a beírást...";
-      case Language.de:
+      case Language.german:
         return "Beginnen Sie mit der Eingabe...";
       default:
         return "Begin typing...";
