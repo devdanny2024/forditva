@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:forditva/services/chatgpt_service.dart';
+import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -41,10 +42,21 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   static const double _dividerH = 10.0;
   static const double _minTopPanel = 400.0;
   static const double _minBotPanel = 100.0;
+  final GeminiTranslator _gemini =
+      GeminiTranslator(); // Already used in your other pages
 
   // Language switcher state
   Language _leftLang = Language.de;
   Language _rightLang = Language.hu;
+
+  bool _imageIsUnclear(String result) {
+    final clean = result.trim().toLowerCase();
+    if (clean.isEmpty) return true;
+    // JSON result: look for {unsafe} or illegible
+    if (clean.contains('{unsafe}') || clean.contains('illegible')) return true;
+    // For HTML, you can check for specific phrases if needed
+    return false;
+  }
 
   // Flag/image and label maps
   final Map<Language, String> _flagPaths = {
@@ -153,6 +165,83 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     if (_imageFile != null) _processImage(imageFile: _imageFile!);
   }
 
+  List<dynamic>? extractFirstJsonArray(String input) {
+    final arrayMatch = RegExp(r'(\[[\s\S]*\])').firstMatch(input);
+    if (arrayMatch != null) {
+      try {
+        return json.decode(arrayMatch.group(1)!);
+      } catch (e) {
+        // still not valid JSON, fallback
+        return null;
+      }
+    }
+    return null;
+  }
+
+  Widget formattedJsonResult(
+    String jsonStr,
+    double panelH, {
+    bool onlyTranslated = false,
+  }) {
+    final items = robustJsonArrayExtractor(jsonStr);
+
+    if (items == null) {
+      return Text(
+        jsonStr,
+        style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
+      );
+    }
+
+    double calcFont(String text) {
+      const double maxFont = 36;
+      const double minFont = 18;
+      double scale = (panelH / 200).clamp(0.7, 1.0);
+      double scaled = maxFont * scale - (text.length * 0.1);
+      if (scaled < minFont) return minFont;
+      if (scaled > maxFont) return maxFont;
+      return scaled * 0.5; // 👈 halve the font
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children:
+          items.map<Widget>((item) {
+            final orig = (item['o'] ?? '').toString().trim();
+            final trans = (item['t'] ?? '').toString().trim();
+            if (orig.isEmpty && trans.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!onlyTranslated && orig.isNotEmpty)
+                    Text(
+                      orig,
+                      style: GoogleFonts.robotoCondensed(
+                        fontSize: 24.0, // or any fixed size you prefer
+                        fontWeight: FontWeight.w500,
+                        color: navRed,
+                      ),
+                    ),
+                  if (trans.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        trans,
+                        style: GoogleFonts.robotoCondensed(
+                          fontSize: 24.0, // or any fixed size you prefer
+                          fontWeight: FontWeight.w500,
+                          color: navGreen,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }).toList(),
+    );
+  }
+
   String stripCodeFence(String input) {
     // Removes any kind of triple-backtick code block, including ```json, ```html, etc.
     final fence = RegExp(
@@ -171,70 +260,6 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           .trim();
     }
     return input.trim();
-  }
-
-  Widget formattedJsonResult(String jsonStr, double panelH) {
-    final clean = stripCodeFence(jsonStr);
-    List<dynamic> items;
-    try {
-      items = json.decode(clean) as List;
-    } catch (_) {
-      // fallback: show raw (bad) output
-      return Text(
-        clean,
-        style: GoogleFonts.robotoCondensed(fontSize: 22, color: Colors.black),
-      );
-    }
-
-    // Pick a dynamic font size based on panel height or text length
-    double calcFont(String text) {
-      const double maxFont = 36;
-      const double minFont = 18;
-      double scale = (panelH / 200).clamp(0.7, 1.0);
-      double scaled = maxFont * scale - (text.length * 0.1);
-      if (scaled < minFont) return minFont;
-      if (scaled > maxFont) return maxFont;
-      return scaled;
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children:
-          items.map<Widget>((item) {
-            final orig = (item['o'] ?? '').toString().trim();
-            final trans = (item['t'] ?? '').toString().trim();
-            if (orig.isEmpty && trans.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (orig.isNotEmpty)
-                    Text(
-                      orig,
-                      style: GoogleFonts.robotoCondensed(
-                        fontSize: calcFont(orig),
-                        fontWeight: FontWeight.bold,
-                        color: navRed,
-                      ),
-                    ),
-                  if (trans.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        trans,
-                        style: GoogleFonts.robotoCondensed(
-                          fontSize: calcFont(trans),
-                          fontWeight: FontWeight.w500,
-                          color: navGreen,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          }).toList(),
-    );
   }
 
   Widget _formattedResult(String resultJson, double panelH) {
@@ -269,7 +294,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     Text(
                       orig,
                       style: GoogleFonts.robotoCondensed(
-                        fontSize: calculateFontSizes(orig, panelH),
+                        fontSize: calculateFontSizes(orig, panelH) * 0.5,
                         fontWeight: FontWeight.bold,
                         color: navRed,
                       ),
@@ -307,7 +332,81 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         fromLangCode: _langCode(_rightLang),
         toLangCode: _langCode(_leftLang),
       );
+
+      String sampleText;
+      try {
+        final maybeJson = json.decode(out);
+        if (maybeJson is List &&
+            maybeJson.isNotEmpty &&
+            maybeJson[0]['o'] != null) {
+          sampleText = maybeJson[0]['o'].toString();
+        } else {
+          sampleText = out;
+        }
+      } catch (_) {
+        sampleText = out;
+      }
+
+      final rawDetected = await _gemini.detectLanguage(sampleText);
+
+      // Normalize Gemini result (this is the KEY PATCH)
+      final detected = rawDetected
+          .toUpperCase() // make uppercase
+          .replaceAll('-', '') // remove hyphens (e.g. "HU-HU" -> "HUHU")
+          .substring(0, 2); // take only first 2 letters
+
+      final langCodes = {
+        Language.hu: 'HU',
+        Language.de: 'DE',
+        Language.en: 'EN',
+      };
+
+      if (detected != langCodes[_rightLang]) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder:
+                (context) => AlertDialog(
+                  title: const Text("Language Mismatch"),
+                  content: Text(
+                    "The detected language is $detected, but your selected input language is ${langCodes[_rightLang]}. Please change the language or select a correct image.",
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("OK"),
+                    ),
+                  ],
+                ),
+          );
+        }
+        setState(() {
+          _isProcessing = false;
+          _resultText = '';
+        });
+        return;
+      }
+
       setState(() => _resultText = out.trim());
+
+      if (_imageIsUnclear(out)) {
+        showDialog(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: const Text("Image Not Clear"),
+                content: const Text(
+                  "The image is not clear enough for AI to read. Please try another image.",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text("OK"),
+                  ),
+                ],
+              ),
+        );
+      }
     } catch (e) {
       setState(() => _resultText = 'Error: $e');
     } finally {
@@ -356,6 +455,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       await _processImage(imageFile: cropped ?? file);
     }
   }
+
+  bool _laActive = false;
 
   @override
   Widget build(BuildContext context) {
@@ -411,15 +512,29 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   (_croppedImageFile ?? _imageFile) != null
                                       ? ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
-                                        child: InteractiveViewer(
-                                          minScale: 1,
-                                          maxScale: 4,
-                                          child: Image.file(
-                                            _croppedImageFile ?? _imageFile!,
-                                            width: boxW,
-                                            height: topH,
-                                            fit: BoxFit.contain,
-                                          ),
+                                        child: LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            return InteractiveViewer(
+                                              panEnabled: true,
+                                              boundaryMargin:
+                                                  const EdgeInsets.all(100),
+                                              clipBehavior: Clip.none,
+                                              minScale: 0.5,
+                                              maxScale: 5.0,
+                                              constrained: true,
+                                              child: SizedBox(
+                                                width: constraints.maxWidth,
+                                                height: constraints.maxHeight,
+                                                child: Image.file(
+                                                  _croppedImageFile ??
+                                                      _imageFile!,
+                                                  fit:
+                                                      BoxFit
+                                                          .contain, // this ensures it’s zoomed out by default
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
                                       )
                                       : /* ... your placeholder content here ... */ Column(
@@ -489,6 +604,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     _croppedImageFile = null;
                                     _resultText = '';
                                     _isProcessing = false;
+                                    _laActive = false;
+                                    _interpretMode = false;
+                                    _splitRatio =
+                                        0.5; // reset to balanced position if you want
                                   });
                                 },
                                 child: Image.asset(
@@ -537,7 +656,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         builder: (ctx2, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
                           final panelW = panelConstraints.maxWidth;
-                          final iconSize = (panelH * 0.15).clamp(16.0, 32.0);
+                          const double iconSize = 32.0;
                           const iconRowH = 48.0;
                           final availH = panelH - iconRowH - 16;
 
@@ -585,7 +704,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                               // ... keep your other bottom panel widgets ...
                               // just make sure you use chosenSize in the HTML/Text!
                               if (_isProcessing)
-                                const Center(child: CircularProgressIndicator())
+                                Center(
+                                  child: Image.asset(
+                                    'assets/images/loader.gif',
+                                    width: 100, // or any size you want
+                                    height: 100,
+                                  ),
+                                )
                               else
                                 Positioned(
                                   top: 16,
@@ -614,7 +739,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                             return formattedJsonResult(
                                               res,
                                               panelH,
-                                            ); // <- use panelH for font sizing
+                                              onlyTranslated:
+                                                  _laActive, // Hide original if LA is active
+                                            );
                                           } else if (_isHtmlDoc(htmlStr)) {
                                             return Html(
                                               data: htmlStr,
@@ -677,25 +804,25 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                         );
                                       },
                                       child: Image.asset(
-                                        'assets/images/copy.png',
+                                        'assets/png24/black/b_copy.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),
                                     ),
-                                    SizedBox(width: iconSize * 0.5),
-                                    Image.asset(
-                                      'assets/images/share.png',
-                                      width: iconSize,
-                                      height: iconSize,
-                                    ),
-                                    SizedBox(width: iconSize * 0.5),
-                                    Image.asset(
-                                      'assets/images/zoom.png',
-                                      width: iconSize,
-                                      height: iconSize,
-                                    ),
-                                    SizedBox(width: iconSize * 0.5),
-                                    Icon(Icons.volume_up, size: iconSize),
+                                    // SizedBox(width: iconSize * 0.5),
+                                    // Image.asset(
+                                    //   'assets/images/share.png',
+                                    //   width: iconSize,
+                                    //   height: iconSize,
+                                    // ),
+                                    // SizedBox(width: iconSize * 0.5),
+                                    // Image.asset(
+                                    //   'assets/images/zoom.png',
+                                    //   width: iconSize,
+                                    //   height: iconSize,
+                                    // ),
+                                    // SizedBox(width: iconSize * 0.5),
+                                    // Icon(Icons.volume_up, size: iconSize),
                                     SizedBox(width: iconSize * 0.5),
                                     GestureDetector(
                                       onTap:
@@ -720,13 +847,34 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                               );
                                             }
                                           }),
-                                      child: Icon(
-                                        _interpretMode
-                                            ? Icons.interpreter_mode
-                                            : Icons.translate,
-                                        size: iconSize,
-                                      ),
+                                      child:
+                                          _interpretMode
+                                              ? Icon(
+                                                Icons.interpreter_mode,
+                                                size: iconSize,
+                                              )
+                                              : Image.asset(
+                                                'assets/png24/black/b_translate.png',
+                                                width: iconSize,
+                                                height: iconSize,
+                                              ),
                                     ),
+                                    SizedBox(width: iconSize * 0.5),
+                                    if (!_interpretMode)
+                                      GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _laActive = !_laActive;
+                                          });
+                                        },
+                                        child: Image.asset(
+                                          _laActive
+                                              ? 'assets/png24/black/b_one_language.png'
+                                              : 'assets/png24/black/b_both_languages.png',
+                                          width: iconSize,
+                                          height: iconSize,
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -782,7 +930,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                 GestureDetector(
                   onTap: _switchLanguages,
                   child: Image.asset(
-                    'assets/images/switch.png',
+                    'assets/png24/black/b_change_flat.png',
                     width: switchSize,
                   ),
                 ),

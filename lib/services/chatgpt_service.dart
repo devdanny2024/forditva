@@ -11,17 +11,11 @@ class ChatGptService {
   String get _apiKey => dotenv.env['OPENAI_API_KEY']!;
   static const _endpoint = 'https://api.openai.com/v1/chat/completions';
 
-  // Maps for pretty names, date formats, etc.
+  // Language name maps
   static const Map<String, String> _langNames = {
     "EN": "English",
     "DE": "German",
     "HU": "Hungarian",
-  };
-
-  static const Map<String, String> _langNativeNames = {
-    "EN": "angol", // "English" in Hungarian
-    "DE": "német", // "German" in Hungarian
-    "HU": "magyar", // "Hungarian" in Hungarian
   };
 
   static const Map<String, String> _dateFormats = {
@@ -30,7 +24,6 @@ class ChatGptService {
     "HU": "YYYY.MM.DD",
   };
 
-  // Dynamic translation prompt, fully localized
   String _buildTranslationPrompt(String fromLang, String toLang) {
     final fromLangName = _langNames[fromLang] ?? fromLang;
     final toLangName = _langNames[toLang] ?? toLang;
@@ -40,47 +33,49 @@ class ChatGptService {
 Attached is an image containing $fromLangName text. The target language is $toLangName.
 
 Your task:
-- Extract only the $fromLangName text segments from the image that are fully and clearly visible. Do not include any text that is cut off or only partially visible.
-- If a segment is not clearly legible or you are uncertain about it, set its "o" value to "{unsafe}" and its "t" value to "{unsafe}".
-- Translate each clearly legible segment individually into the specified target language, preserving the original meaning and context.
-- Convert any dates into the locale format of the target language ($targetDateFormat).
-- Output a JSON array of objects, where each object has two fields:
-  - "o": the original $fromLangName line or segment (or "{unsafe}")
-  - "t": the translation in $toLangName (or "{unsafe}")
-Do not add any explanations, summaries, or additional information.
+- Extract only fully visible $fromLangName text segments. Skip any partially visible, cut-off, or incomplete text.
+- If a segment is not clearly legible, set both "o" and "t" fields to "{unsafe}".
+- Translate each clearly legible segment individually into $toLangName.
+- Convert any dates into $targetDateFormat.
+- Do not add any explanations, summaries, or instructions.
+
+STRICT OUTPUT FORMAT:
+Return the result ONLY as valid JSON array, exactly like this:
+
+[
+  { "o": "original text here", "t": "translated text here" }
+]
+
+Do not add any comments, markdown, explanations, or text outside this JSON array. Only return valid JSON.
+If you are unable to detect any text, return: []
 ''';
   }
 
-  // Dynamic interpretation/summarization prompt, fully localized
   String _buildInterpretationPrompt(String fromLang, String toLang) {
     final fromLangName = _langNames[fromLang] ?? fromLang;
     final toLangName = _langNames[toLang] ?? toLang;
-    // Output HTML instructions in the target language if you wish, or in English for now.
 
-    // (For brevity, this is English. For full i18n, you can expand it with switch/case/Map per toLang.)
     return '''
-Attached is an image containing $fromLangName text. This text can be from various sources such as official documents (e.g., invoices, bills, notices), signs, advertisements, menus, instructions, or any other kind of informational content.
+Attached is an image containing $fromLangName text.
 
-Important:
-- Only provide details that are explicitly and clearly visible in the original image. Never guess, supplement, autocorrect, or assume missing or unclear information—even if it seems obvious.
-- If any field (names, addresses, numbers, etc.) is partly illegible or uncertain, write "illegible" or "not clearly identifiable".
-- Always reproduce names, addresses, and other data exactly as shown, preserving spelling, special characters, and any peculiarities.
+Instructions:
+- Carefully extract and analyze the document content.
+- Only use information that is fully visible and clearly readable.
+- If anything is illegible or incomplete, say "illegible" or "not clearly identifiable".
 
-Your task:
-- Recognize and extract the main information and key details from the text—**only if clearly legible**.
-- Understand the context and purpose (e.g., payment request, product information, directions, promotion).
-- Generate a clear, concise, and user-friendly summary explaining what the text is about and what actions or points are important.
-- Format the output in $toLangName as HTML, using appropriate structure:
-  -- Headings for main sections
-  -- Paragraphs for explanations
-  -- Lists for instructions or key points
-  -- Emphasis (e.g., <strong>) to highlight important facts like dates, amounts, or names
+Output:  
+Provide a clear summary in $toLangName using valid HTML structure:
+- Use paragraphs for explanations.
+- Use lists for instructions or key points.
+- Use <strong> to highlight important facts (dates, amounts, names).
+- Keep output minimal on whitespace.
+- Do NOT wrap inside code blocks or markdown.
 
-The goal: Provide a helpful explanation for users who might not fully understand the original $fromLangName text, making the information easy to read and act upon, while ensuring all factual details are reported exactly as they appear and only when fully certain.
+If nothing can be read, reply only with:
+<p><strong>Can't understand the image</strong></p>
 ''';
   }
 
-  /// Main method for processing the image
   Future<String> processImage({
     required File imageFile,
     required bool translate,
@@ -96,7 +91,6 @@ The goal: Provide a helpful explanation for users who might not fully understand
     final base64Image = base64Encode(bytes);
     final mimeType = lookupMimeType(imageFile.path) ?? 'image/jpeg';
 
-    // DYNAMIC: pick the prompt per requested operation and language
     final prompt =
         interpret
             ? _buildInterpretationPrompt(fromLangCode, toLangCode)
@@ -109,7 +103,7 @@ The goal: Provide a helpful explanation for users who might not fully understand
           {
             "type": "text",
             "text":
-                "You are an AI assistant specialized in image translation & interpretation.",
+                "You are an AI assistant for image translation & document interpretation.",
           },
         ],
       },
@@ -132,10 +126,10 @@ The goal: Provide a helpful explanation for users who might not fully understand
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
-        'model': 'gpt-4.1', // Or your vision-capable model
+        'model': 'gpt-4.1',
         'messages': messages,
         'temperature': 0.2,
-        'max_tokens': 1024,
+        'max_tokens': 2048,
       }),
     );
 
@@ -144,6 +138,8 @@ The goal: Provide a helpful explanation for users who might not fully understand
     }
 
     final data = jsonDecode(response.body);
-    return data['choices'][0]['message']['content'] as String;
+    final result = data['choices'][0]['message']['content'] as String;
+
+    return result.trim();
   }
 }

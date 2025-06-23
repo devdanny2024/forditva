@@ -13,5 +13,6 @@
   "inputPlaceholder": "Mit szeretne ma lefordítani?",
   "outputPlaceholder": "A fordítás itt fog megjelenni.",
   "documentMode": "Dokumentum",
-  "imageMode": "Kép"
+  "imageMode": "Kép",
+  "copyToClipboard": "Vágólapra másolás"
 }

@@ -20,6 +20,7 @@ dependencies:
   speech_to_text: ^7.0.0
   flutter_tts: ^4.2.2
   permission_handler: ^12.0.0
+  flutter_svg: ^2.0.7
   flutter_sound: ^9.2.13 # or latest version
   flutter_slidable: ^4.0.0
   http: ^1.4.0
@@ -64,4 +65,7 @@ flutter:
     - .env
     - assets/flags/
     - assets/images/
+    - assets/images/logo.png
+    - assets/png24/black/
+    - assets/png24/white/
     - assets/splash/

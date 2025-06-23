@@ -13,5 +13,6 @@
   "inputPlaceholder": "Was möchten Sie heute übersetzen?",
   "outputPlaceholder": "Die Übersetzung erscheint hier.",
   "documentMode": "Dokument",
-  "imageMode": "Bild"
+  "imageMode": "Bild",
+  "copyToClipboard": "In die Zwischenablage kopieren"
 }

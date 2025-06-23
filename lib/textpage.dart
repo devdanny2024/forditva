@@ -4,12 +4,14 @@ import 'dart:math' as math; // ← Add this at the top of your file
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/OpenAiTtsService.dart'; // your Gemini client
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:forditva/utils/debouncer.dart'; // if you created it separately
 import 'package:forditva/utils/utils.dart';
+import 'package:forditva/widgets/SmartScrollableText.dart';
 import 'package:forditva/widgets/edit_recording_modal.dart';
 import 'package:forditva/widgets/recording_modal.dart'; // adjust path as needed
 import 'package:google_fonts/google_fonts.dart';
@@ -20,17 +22,6 @@ const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
 const Color gold = Colors.amber;
 bool _showRecording = false;
-
-String _flagAsset(Language lang) {
-  switch (lang) {
-    case Language.hungarian:
-      return 'assets/flags/HU_BB.png';
-    case Language.german:
-      return 'assets/flags/DE_BW.png';
-    case Language.english:
-      return 'assets/flags/EN_BW.png';
-  }
-}
 
 typedef OnEditAndTranslate =
     void Function({required String edited, required String translated});
@@ -128,19 +119,23 @@ class _TextPageState extends State<TextPage> {
   }
 
   Future<void> _playInputSound() async {
+    // Stop the other audio player if playing
+    await _outputAudioPlayer?.stop();
+    setState(() {
+      _isOutputPlaying = false;
+    });
+
     await _inputAudioPlayer?.stop();
     setState(() {
       _isInputPlaying = true;
     });
     _inputAudioPlayer ??= ap.AudioPlayer();
 
-    // <--- THIS is what you need:
     final file = await _ttsService.synthesizeSpeech(
       text: _translation,
       voice: "onyx",
       instructions: instructionForLang(_rightLanguage),
     );
-    // <--- ^^^
 
     late final StreamSubscription sub;
     sub = _inputAudioPlayer!.onPlayerStateChanged.listen((state) {
@@ -159,6 +154,12 @@ class _TextPageState extends State<TextPage> {
   }
 
   Future<void> _playOutputSound() async {
+    // Stop the other audio player if playing
+    await _inputAudioPlayer?.stop();
+    setState(() {
+      _isInputPlaying = false;
+    });
+
     await _outputAudioPlayer?.stop();
     setState(() {
       _isOutputPlaying = true;
@@ -272,7 +273,10 @@ class _TextPageState extends State<TextPage> {
     });
   }
 
-  Future<void> autoTranslateOnLanguageChange({bool leftChanged = true}) async {
+  Future<void> autoTranslateOnLanguageChange({
+    bool leftChanged = true,
+    bool playTTS = true,
+  }) async {
     setState(() {
       _isTranslating = true;
       if (leftChanged) {
@@ -305,7 +309,7 @@ class _TextPageState extends State<TextPage> {
         _inputController.text = result;
         _isTranslating = false;
       });
-      await _autoPlayOutputTTS(); // <-- use this!
+      if (playTTS) await _autoPlayOutputTTS(); // Only play TTS if allowed
     } else {
       sourceText = _inputController.text;
       fromLang = _leftLanguage;
@@ -326,7 +330,7 @@ class _TextPageState extends State<TextPage> {
         _translation = result;
         _isTranslating = false;
       });
-      await _autoPlayInputTTS(); // <-- use this!
+      if (playTTS) await _autoPlayInputTTS(); // Only play TTS if allowed
     }
   }
 
@@ -443,11 +447,23 @@ class _TextPageState extends State<TextPage> {
     }
   }
 
+  bool _isTopRecording = false;
+  bool _isBottomRecording = false;
+
   Future<void> _openRecordingCustom({
     required Language from,
     required Language to,
     required bool isTopPanel, // true = output/top, false = input/bottom
   }) async {
+    // Set recording state to true for correct panel
+    setState(() {
+      if (isTopPanel) {
+        _isTopRecording = true;
+      } else {
+        _isBottomRecording = true;
+      }
+    });
+
     await showDialog(
       context: context,
       barrierColor: Colors.transparent,
@@ -461,84 +477,93 @@ class _TextPageState extends State<TextPage> {
                 isTopPanel: isTopPanel,
                 onTranscribed: (transcript) async {
                   if (transcript.trim().isEmpty) {
-                    if (mounted) setState(() => _isTranslating = false);
+                    if (mounted)
+                      setState(() {
+                        _isTranslating = false;
+                        if (isTopPanel) {
+                          _isTopRecording = false;
+                        } else {
+                          _isBottomRecording = false;
+                        }
+                      });
                     return;
                   }
+
                   if (mounted) setState(() => _isTranslating = true);
 
-                  // Set the transcribed text (user's speech) to the card
-                  // where the *translated* text previously appeared.
                   if (isTopPanel) {
-                    // If top mic tapped, transcribed text goes to the top card (_translation)
                     setState(() {
                       _translation = transcript;
                     });
                   } else {
-                    // If bottom mic tapped, transcribed text goes to the bottom card (_inputController.text)
                     setState(() {
                       _inputController.text = transcript;
                     });
                   }
 
-                  // Always translate from the user's spoken language (`from.code`)
-                  // to the target language (`to.code`).
                   final geminiResult = await translateFinal(
                     transcript,
                     from.code,
                     to.code,
                   );
 
-                  // Now, set the translated text to the card
-                  // where the *transcribed* text previously appeared.
                   if (isTopPanel) {
-                    // Top mic tapped: translated text goes to the bottom card (_inputController.text)
                     setState(() {
                       _inputController.text = geminiResult;
-                      _isTranslating =
-                          false; // Stop general translation busy indicator
+                      _isTranslating = false;
                     });
-                    // Play TTS for the translated text (now in _inputController.text, language is _leftLanguage)
-                    setState(
-                      () => _isAudioLoadingInput = true,
-                    ); // Assuming _isAudioLoadingInput is for the bottom card
+                    setState(() => _isAudioLoadingInput = true);
                     await _playSoundWithOpenAI(
-                      _inputController.text, // Text to play
-                      _leftLanguage, // Language of the translated text
+                      _inputController.text,
+                      _leftLanguage,
                       instructionForLang(_leftLanguage),
-                      () {}, // onStart: Don't reveal, text is already visible
+                      () {},
                       () {
                         if (mounted)
                           setState(() => _isAudioLoadingInput = false);
                       },
                     );
                   } else {
-                    // Bottom mic tapped: translated text goes to the top card (_translation)
                     setState(() {
                       _translation = geminiResult;
-                      _isTranslating =
-                          false; // Stop general translation busy indicator
+                      _isTranslating = false;
                     });
-                    // Play TTS for the translated text (now in _translation, language is _rightLanguage)
-                    setState(
-                      () => _isAudioLoadingOutput = true,
-                    ); // Assuming _isAudioLoadingOutput is for the top card
+                    setState(() => _isAudioLoadingOutput = true);
                     await _playSoundWithOpenAI(
-                      _translation, // Text to play
-                      _rightLanguage, // Language of the translated text
+                      _translation,
+                      _rightLanguage,
                       instructionForLang(_rightLanguage),
-                      () {}, // onStart: Don't reveal, text is already visible
+                      () {},
                       () {
                         if (mounted)
                           setState(() => _isAudioLoadingOutput = false);
                       },
                     );
                   }
+
+                  // Reset recording state after transcription finishes
+                  setState(() {
+                    if (isTopPanel) {
+                      _isTopRecording = false;
+                    } else {
+                      _isBottomRecording = false;
+                    }
+                  });
                 },
-                onPartialTranscript: (partial) {
-                  // Optional: If you want live updates as user speaks, handle here
-                  // You might need to adjust this logic too if you want partials to swap places
-                  // according to the new logic. For now, it's left as is to avoid over-complication.
+
+                // This is the important part for cancel behavior:
+                onCancel: () {
+                  setState(() {
+                    if (isTopPanel) {
+                      _isTopRecording = false;
+                    } else {
+                      _isBottomRecording = false;
+                    }
+                  });
+                  Navigator.of(context).pop();
                 },
+
+                onPartialTranscript: (partial) {},
               ),
             ),
           ),
@@ -604,9 +629,9 @@ class _TextPageState extends State<TextPage> {
   void _copyText(String text) {
     if (text.isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Copied to clipboard")));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.copyToClipboard)),
+    );
   }
 
   Future<void> _playSound(String text, Language lang) async {
@@ -636,27 +661,37 @@ class _TextPageState extends State<TextPage> {
       builder: (context, constraints) {
         final switchSize = 70.0;
         final flagSize = 30.0;
+
         final halfH = constraints.maxHeight / 2;
+        final inputCardTop = 0.0;
+        final inputCardHeight = halfH + switchSize / 2;
+        final outputCardTop = halfH - 45;
+        final outputCardHeight = halfH + switchSize / 2;
+        final switchRowTop = halfH - switchSize / 2 / 0.7;
+        final rightOverlayTop = halfH - switchSize / 2 / 0.7;
         return Container(
-          padding: const EdgeInsets.only(top: 30),
+          padding: const EdgeInsets.only(top: 30, bottom: 0),
           child: Stack(
             children: [
               // Input card
               Positioned(
-                top: 0,
+                top: inputCardTop,
                 left: 16,
                 right: 16,
-                height: halfH + switchSize / 2,
+                height: inputCardHeight,
                 child: TranslationInputCard(
                   fromLang: _leftLanguage,
                   toLang: _rightLanguage,
                   key: inputKey,
+                  isRecording: _isTopRecording,
+
                   text: _translation,
                   isBusy: _isTranslating,
                   isAudioPlaying: _isInputPlaying,
                   onPlaySound: _playInputSound,
                   onStopSound: _stopInputSound,
                   isAudioLoading: _isAudioLoadingInput,
+                  onCopy: () => _copyText(_translation),
 
                   // ----- NEW: Stack Modal Editing
                   onEditTap: () {
@@ -706,10 +741,10 @@ class _TextPageState extends State<TextPage> {
 
               // Output card
               Positioned(
-                top: halfH - 20,
+                top: outputCardTop,
                 left: 16,
                 right: 16,
-                height: halfH + switchSize / 2,
+                height: outputCardHeight,
                 child: TranslationOutputCard(
                   fromLang: _leftLanguage,
                   toLang: _rightLanguage,
@@ -720,6 +755,8 @@ class _TextPageState extends State<TextPage> {
                   onPlaySound: _playOutputSound,
                   onStopSound: _stopOutputSound,
                   controller: _inputController,
+                  isRecording: _isBottomRecording,
+
                   onMicTap:
                       () => _openRecordingCustom(
                         from: _leftLanguage,
@@ -768,11 +805,11 @@ class _TextPageState extends State<TextPage> {
               ),
               // Right overlay
               Positioned(
-                top: halfH - switchSize / 2,
+                top: rightOverlayTop,
                 left: constraints.maxWidth / 2 - switchSize / 4,
                 right: 16,
                 child: Container(
-                  height: 50,
+                  height: 70,
                   decoration: BoxDecoration(
                     image: DecorationImage(
                       image: AssetImage(
@@ -790,7 +827,7 @@ class _TextPageState extends State<TextPage> {
               ),
               // 4) Switch + flags row
               Positioned(
-                top: halfH - switchSize / 2,
+                top: switchRowTop,
                 left: 26,
                 right: 26,
                 child: SizedBox(
@@ -801,7 +838,7 @@ class _TextPageState extends State<TextPage> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 10.0, top: 20),
+                          padding: const EdgeInsets.only(left: 10.0),
                           child: GestureDetector(
                             onTap: () {
                               setState(() {
@@ -839,8 +876,13 @@ class _TextPageState extends State<TextPage> {
                       // Switch button
                       Center(
                         child: GestureDetector(
-                          onTap: () {
+                          onTap: () async {
+                            await _inputAudioPlayer?.stop();
+                            await _outputAudioPlayer?.stop();
+                            await _audioPlayer?.stop();
                             setState(() {
+                              _isInputPlaying = false;
+                              _isOutputPlaying = false;
                               final tmpLang = _leftLanguage;
                               _leftLanguage = _rightLanguage;
                               _rightLanguage = tmpLang;
@@ -848,9 +890,15 @@ class _TextPageState extends State<TextPage> {
                               _inputController.text = _translation;
                               _translation = tmpText;
                             });
-                            // Only update translations. Do NOT call any _playSoundWithOpenAI here!
-                            autoTranslateOnLanguageChange(leftChanged: true);
-                            autoTranslateOnLanguageChange(leftChanged: false);
+                            // No TTS auto play after switch
+                            autoTranslateOnLanguageChange(
+                              leftChanged: true,
+                              playTTS: false,
+                            );
+                            autoTranslateOnLanguageChange(
+                              leftChanged: false,
+                              playTTS: false,
+                            );
                           },
 
                           child: Container(
@@ -866,7 +914,7 @@ class _TextPageState extends State<TextPage> {
                             ),
                             child: Center(
                               child: Image.asset(
-                                'assets/images/switch.png',
+                                'assets/png24/black/b_change_round.png',
                                 width: switchSize * 0.6,
                                 height: switchSize * 0.6,
                               ),
@@ -880,7 +928,7 @@ class _TextPageState extends State<TextPage> {
                         child: Padding(
                           padding: const EdgeInsets.only(
                             right: 10.0,
-                            bottom: 30,
+                            bottom: 10,
                           ),
                           child: GestureDetector(
                             onTap: () {
@@ -950,6 +998,7 @@ class TranslationInputCard extends StatelessWidget {
   final bool isAudioLoading; // <-- Add this
   final bool isAudioPlaying;
   final VoidCallback? onStopSound;
+  final bool isRecording; // <-- 🔥 new
 
   const TranslationInputCard({
     super.key,
@@ -965,167 +1014,191 @@ class TranslationInputCard extends StatelessWidget {
     required this.isAudioPlaying,
     this.onStopSound,
     this.onMicTap,
+    required this.isRecording, // <-- 🔥 new
   });
 
   @override
   Widget build(BuildContext context) {
-    final double fontSize = calculateFontSize(text);
+    const double reservedTop = 100;
+    final double reservedBot = getInputTopPadding(text);
+    final double fontSize = calculateFontSize(text).clamp(30.0, 50.0);
 
-    return Container(
-      // Keep your border radius and any base color here
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
-      clipBehavior:
-          Clip.antiAlias, // This ensures rounded corners for everything inside!
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // --- ZOOMED-IN BACKGROUND IMAGE ---
-          Positioned.fill(
-            child: Image.asset('assets/images/bg-dark.jpg', fit: BoxFit.cover),
-          ),
-          // --- FOREGROUND CONTENT (unchanged) ---
-          // Scrollable, upside-down text, taking all space except for icons/mic
-          Positioned.fill(
-            top: 100,
-            bottom: dynamicInputBottom(fontSize),
-            left: 16,
-            right: 16,
-            child: SingleChildScrollView(
-              reverse: true,
-              physics: const BouncingScrollPhysics(),
-              child: RotatedBox(
-                quarterTurns: 2,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child:
-                      isBusy
-                          ? const Center(child: CircularProgressIndicator())
-                          : (text.isNotEmpty
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double maxWidth = constraints.maxWidth - 30;
+        final double topPadding = calculateTopPadding(
+          text: text,
+          inverted: true,
+          maxWidth: maxWidth,
+        );
+
+        return Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/images/bg-dark.jpg',
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: reservedTop,
+                bottom: reservedBot,
+                left: 15,
+                right: 15,
+                child: RotatedBox(
+                  quarterTurns: 2,
+                  child: SingleChildScrollView(
+                    reverse: false,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Align(
+                      alignment: Alignment(0.0, topPaddingToAlign(topPadding)),
+                      child:
+                          text.isNotEmpty
                               ? GestureDetector(
                                 onTap: onEditTap,
-                                child: Text(
-                                  capitalizeFirst(text),
-                                  textAlign: TextAlign.center,
+                                child: SmartScrollableText(
+                                  text: text,
+                                  fontSize: fontSize,
+                                  inverted: true,
                                   style: GoogleFonts.robotoCondensed(
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: calculateFontSize(text),
+                                    fontWeight: FontWeight.w300,
+                                    fontSize: fontSize,
                                     color: Colors.white,
-                                    height: 1,
+                                    height: 1.2,
                                   ),
                                 ),
                               )
-                              : const SizedBox.shrink()),
-                ),
-              ),
-            ),
-          ),
-          // Mic button and icons (overlay)
-          Positioned(
-            top: 20,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: GestureDetector(
-                onTap: onMicTap,
-                child: Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage(flagAsset(toLang, whiteBorder: true)),
-                      fit: BoxFit.cover,
+                              : const SizedBox.shrink(),
                     ),
                   ),
-                  child: const Center(
-                    child: RotatedBox(
-                      quarterTurns: 2,
-                      child: Image(
-                        image: AssetImage(
-                          'assets/images/microphone-white-border.png',
+                ),
+              ),
+              // Mic button and icons (overlay)
+              Positioned(
+                top: 20,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      if (isRecording) {
+                        Navigator.of(context).pop();
+                      } else {
+                        onMicTap?.call();
+                      }
+                    },
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        image: DecorationImage(
+                          image: AssetImage(
+                            flagAsset(toLang, whiteBorder: true),
+                          ),
+                          fit: BoxFit.cover,
                         ),
-                        width: 40,
-                        height: 40,
                       ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Bulb icon (left)
-          Positioned(
-            top: 20,
-            left: 8,
-            child: GestureDetector(
-              onTap: onExplain,
-              child: Transform.rotate(
-                angle: math.pi,
-                child: Image.asset(
-                  'assets/images/bulb.png',
-                  width: 40,
-                  height: 40,
-                ),
-              ),
-            ),
-          ),
-          // Copy/Play icons (right)
-          Positioned(
-            top: 20,
-            right: 8,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: onCopy,
-                  child: Transform.rotate(
-                    angle: math.pi,
-                    child: Image.asset(
-                      'assets/images/copy.png',
-                      width: 40,
-                      height: 40,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // if (isAudioLoading)
-                    //   SizedBox(
-                    //     width: 30,
-                    //     height: 30,
-                    //     child: CircularProgressIndicator(
-                    //       strokeWidth: 2,
-                    //       valueColor: AlwaysStoppedAnimation<Color>(
-                    //         Colors.amber,
-                    //       ),
-                    //     ),
-                    //   )
-                    // else
-                    if (isAudioPlaying)
-                      GestureDetector(
-                        onTap: onStopSound,
-                        child: Icon(Icons.stop, size: 40, color: Colors.red),
-                      )
-                    else
-                      GestureDetector(
-                        onTap: onPlaySound,
-                        child: Transform.rotate(
-                          angle: math.pi,
+                      child: Center(
+                        child: RotatedBox(
+                          quarterTurns: 2,
                           child: Image.asset(
-                            'assets/images/play-sound.png',
+                            isRecording
+                                ? 'assets/images/stoprec.png'
+                                : 'assets/images/microphone-white-border.png',
                             width: 40,
                             height: 40,
                           ),
                         ),
                       ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Bulb icon (left)
+              Positioned(
+                top: 20,
+                left: 8,
+                child: GestureDetector(
+                  onTap: onExplain,
+                  child: Transform.rotate(
+                    angle: math.pi,
+                    child: Image.asset(
+                      'assets/png24/white/w_lightbulb.png',
+                      width: 40,
+                      height: 40,
+                    ),
+                  ),
+                ),
+              ),
+              // Copy/Play icons (right)
+              Positioned(
+                top: 20,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: onCopy,
+                      child: Transform.rotate(
+                        angle: math.pi,
+                        child: Image.asset(
+                          'assets/png24/white/w_copy.png',
+                          width: 40,
+                          height: 40,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // if (isAudioLoading)
+                        //   SizedBox(
+                        //     width: 30,
+                        //     height: 30,
+                        //     child: CircularProgressIndicator(
+                        //       strokeWidth: 2,
+                        //       valueColor: AlwaysStoppedAnimation<Color>(
+                        //         Colors.amber,
+                        //       ),
+                        //     ),
+                        //   )
+                        // else
+                        if (isAudioPlaying)
+                          GestureDetector(
+                            onTap: onStopSound,
+                            child: Icon(
+                              Icons.stop,
+                              size: 40,
+                              color: Colors.red,
+                            ),
+                          )
+                        else
+                          GestureDetector(
+                            onTap: onPlaySound,
+                            child: Transform.rotate(
+                              angle: math.pi,
+                              child: Image.asset(
+                                'assets/png24/white/w_speaker.png',
+                                width: 40,
+                                height: 40,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1142,6 +1215,7 @@ class TranslationOutputCard extends StatelessWidget {
   final VoidCallback? onPlaySound;
   final bool isAudioPlaying;
   final VoidCallback? onStopSound;
+  final bool isRecording;
 
   const TranslationOutputCard({
     super.key,
@@ -1156,148 +1230,169 @@ class TranslationOutputCard extends StatelessWidget {
     required this.isAudioPlaying,
     this.onStopSound,
     required this.isAudioLoading,
+    required this.isRecording, // <-- 🔥 new
   });
 
   @override
   Widget build(BuildContext context) {
-    final double fontSize = calculateFontSize(controller.text);
+    final double topReserved = getOutputTopPadding(controller.text);
+    const double bottomReserved = 110;
+    final double fontSize = calculateFontSize(
+      controller.text,
+    ).clamp(30.0, 50.0);
 
-    // Estimate how much space the mic row uses (including icons), then pad bottom accordingly
-    const double bottomReserved = 110; // mic + icons area
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      clipBehavior: Clip.antiAlias, // ensures borderRadius works on image!
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/bg-bright.jpg',
-              fit: BoxFit.cover,
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double maxWidth = constraints.maxWidth - 30;
+        final double topPadding = calculateTopPadding(
+          text: controller.text,
+          inverted: false,
+          maxWidth: maxWidth,
+        );
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
           ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(
+                  'assets/images/bg-bright.jpg',
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned.fill(
+                bottom: bottomReserved,
+                top: topReserved,
+                left: 10,
+                right: 10,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Align(
+                    alignment: Alignment(0.0, topPaddingToAlign(topPadding)),
+                    child: SmartScrollableText(
+                      text: controller.text,
+                      fontSize: fontSize,
+                      inverted: false,
+                      style: GoogleFonts.robotoCondensed(
+                        fontWeight: FontWeight.w300,
+                        fontSize: fontSize,
+                        color: Colors.black,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Mic+Flag at bottom center (rectangle, not circle)
+              Positioned(
+                bottom: 35,
+                left: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: () {
+                    if (isRecording) {
+                      Navigator.of(context).pop();
+                    } else {
+                      onMicTap.call();
+                    }
+                  },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Image.asset(
+                        flagAsset(fromLang, whiteBorder: false),
+                        width: 60,
+                        height: 60,
+                      ),
+                      Image.asset(
+                        isRecording
+                            ? 'assets/images/stoprec.png'
+                            : 'assets/images/microphone-white-border.png',
+                        width: 40,
+                        height: 40,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
-          // The scrollable, non-editable transcribed text
-          Positioned.fill(
-            bottom: bottomReserved,
-            top: 0, // reserve space for mic/icons row
-            child: SingleChildScrollView(
-              padding: dynamicOutputPadding(fontSize),
-              child: GestureDetector(
-                onTap: onEditTap,
-                child: Center(
-                  child:
-                      isBusy
-                          ? const Center(child: CircularProgressIndicator())
-                          : Text(
-                            capitalizeFirst(controller.text),
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.robotoCondensed(
-                              fontWeight: FontWeight.w500,
-                              fontSize: calculateFontSize(controller.text),
-                              color: Colors.black,
-                              height: 1,
+              // Edit/copy/play icons on left/right (unchanged)
+              Positioned(
+                bottom: 35,
+                left: 8,
+                child: GestureDetector(
+                  onTap: onEditTap,
+                  child: Image.asset(
+                    'assets/png24/black/b_edit.png',
+                    width: 40,
+                    height: 40,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 35,
+                right: 8,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: onCopy,
+                      child: Image.asset(
+                        'assets/png24/black/b_copy.png',
+                        width: 40,
+                        height: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // if (isAudioLoading)
+                        //   SizedBox(
+                        //     width: 30,
+                        //     height: 30,
+                        //     child: CircularProgressIndicator(
+                        //       strokeWidth: 2,
+                        //       valueColor: AlwaysStoppedAnimation<Color>(
+                        //         Colors.amber,
+                        //       ),
+                        //     ),
+                        //   )
+                        // else
+                        if (isAudioPlaying)
+                          GestureDetector(
+                            onTap: onStopSound,
+                            child: Icon(
+                              Icons.stop,
+                              size: 40,
+                              color: Colors.red,
+                            ),
+                          )
+                        else
+                          GestureDetector(
+                            onTap: onPlaySound,
+                            child: Transform.rotate(
+                              angle: math.pi,
+                              child: Image.asset(
+                                'assets/png24/black/b_speaker.png',
+                                width: 40,
+                                height: 40,
+                              ),
                             ),
                           ),
-                ),
-              ),
-            ),
-          ),
-          // Mic+Flag at bottom center (rectangle, not circle)
-          Positioned(
-            bottom: 60,
-            left: 0,
-            right: 0,
-            child: GestureDetector(
-              onTap: onMicTap,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Image.asset(
-                    flagAsset(fromLang, whiteBorder: false),
-                    width: 60,
-                    height: 60,
-                  ),
-                  const Image(
-                    image: AssetImage(
-                      'assets/images/microphone-white-border.png',
+                      ],
                     ),
-                    width: 40,
-                    height: 40,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Edit/copy/play icons on left/right (unchanged)
-          Positioned(
-            bottom: 60,
-            left: 8,
-            child: GestureDetector(
-              onTap: onEditTap,
-              child: Image.asset(
-                'assets/images/edit.png',
-                width: 40,
-                height: 40,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 60,
-            right: 8,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: onCopy,
-                  child: Image.asset(
-                    'assets/images/copy.png',
-                    width: 40,
-                    height: 40,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // if (isAudioLoading)
-                    //   SizedBox(
-                    //     width: 30,
-                    //     height: 30,
-                    //     child: CircularProgressIndicator(
-                    //       strokeWidth: 2,
-                    //       valueColor: AlwaysStoppedAnimation<Color>(
-                    //         Colors.amber,
-                    //       ),
-                    //     ),
-                    //   )
-                    // else
-                    if (isAudioPlaying)
-                      GestureDetector(
-                        onTap: onStopSound,
-                        child: Icon(Icons.stop, size: 40, color: Colors.red),
-                      )
-                    else
-                      GestureDetector(
-                        onTap: onPlaySound,
-                        child: Transform.rotate(
-                          angle: math.pi,
-                          child: Image.asset(
-                            'assets/images/play-sound.png',
-                            width: 40,
-                            height: 40,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

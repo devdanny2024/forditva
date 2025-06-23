@@ -29,7 +29,7 @@ class RecordingModal extends StatefulWidget {
   final Function(String) onTranscribed;
   final bool isTopPanel;
   final Function(String)? onPartialTranscript;
-  // Removed editMode, textController, onConcatRecording, and controller as they are no longer needed for this modal.
+  final VoidCallback? onCancel;
 
   const RecordingModal({
     super.key,
@@ -37,6 +37,7 @@ class RecordingModal extends StatefulWidget {
     required this.onTranscribed,
     required this.isTopPanel,
     this.onPartialTranscript,
+    this.onCancel,
   });
 
   @override

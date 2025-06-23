@@ -9,6 +9,7 @@ class GeminiTranslator {
         model: 'gemini-2.0-flash',
         apiKey: dotenv.env['GEMINI_API_KEY']!,
       );
+
   Future<String> translate(
     String inputText,
     String fromLang,
@@ -16,39 +17,64 @@ class GeminiTranslator {
     bool explain = false,
     String level = 'A2',
   }) async {
-    String prompt;
+    if (!explain) {
+      // Regular translation logic
+      final prompt = '''
+Translate the following text from $fromLang to $toLang.
 
-    if (explain) {
-      switch (level) {
-        case 'A1':
-          prompt =
-              "Act like a basic language tutor. Provide a simple and minimal explanation of this sentence in $fromLang translated to $toLang: $inputText. "
-              "Do not include any bold, underline, or other formatting—just the explanation text.";
-          break;
-        case 'A2':
-          prompt =
-              "You are a helpful language teacher. Explain the structure and vocabulary moderately for this $fromLang sentence translated to $toLang: $inputText. "
-              "Do not include any styling or extra commentary—just the explanation text.";
-          break;
-        case 'A3':
-          prompt =
-              "Be a detailed linguistics coach. Break down the grammar, vocabulary, and meaning thoroughly for this sentence in $fromLang translated to $toLang: $inputText. "
-              "Output only the explanation itself without any formatting.";
-          break;
-        default:
-          // fallback to plain translation if level is unexpected
-          prompt =
-              "Translate the following text from $fromLang to $toLang. "
-              "Output only the translated text with no styling or extra words: $inputText";
-      }
+Output only the translated sentence. Do not include any additional notes, formatting, titles, markdown, or explanations.
+
+Text to translate:
+"$inputText"
+''';
+
+      final response = await _model.generateContent([Content.text(prompt)]);
+      return response.text?.trim() ?? '';
     } else {
-      prompt =
-          "Translate the following text from $fromLang to $toLang. "
-          "Output only the translated text with no bold, no styling, and no additional explanation: $inputText";
-    }
+      // Explanation mode with level adaptation
+      final prompt = '''
+You are a highly skilled Hungarian language tutor specialized in CEFR levels. The student is at level $level.
 
-    final response = await _model.generateContent([Content.text(prompt)]);
-    return response.text?.trim() ?? '';
+Your task: Analyze and explain the following sentence:
+"$inputText"
+
+Adapt explanations based on the student's level:
+
+- If level is A1:
+    - Use extremely simple and clear language.
+    - Focus only on very basic grammar: word order, present tense, simple suffixes, singular/plural.
+    - Avoid complex grammatical structures like cases, moods, or exceptions.
+    - Introduce only absolutely necessary new vocabulary.
+
+- If level is A2:
+    - Use simple but more detailed explanations.
+    - Cover common grammar topics like cases (accusative, dative), basic verb conjugations, tenses, and typical suffixes.
+    - Introduce useful vocabulary that helps understand the sentence, with simple definitions.
+
+- If level is B1:
+    - Provide more comprehensive grammar explanations.
+    - Cover more complex Hungarian structures: multiple cases, verb prefixes, complex word order, conditional, subjunctive, participles.
+    - Introduce more nuanced vocabulary, idiomatic phrases, and synonyms.
+
+- For all levels:
+    - Do NOT use complex linguistic jargon.
+    - Keep the tone as if explaining to an actual language learner.
+    - Provide simple examples for grammar points where possible.
+    - Never explain words the learner likely already knows at their level.
+
+Output format (strict JSON, no extra text):
+{
+  "grammar_explanation": "...",
+  "key_vocabulary": "...",
+  "translation": "..."
+}
+''';
+
+      final response = await _model.generateContent([Content.text(prompt)]);
+      final text = response.text?.trim() ?? '';
+
+      return text;
+    }
   }
 
   Stream<String> streamTranslate(
@@ -59,7 +85,7 @@ class GeminiTranslator {
   }) async* {
     final full = await translate(input, from, to, explain: explain);
     for (int i = 0; i < full.length; i++) {
-      await Future.delayed(Duration(milliseconds: 30)); // typing speed
+      await Future.delayed(const Duration(milliseconds: 30));
       yield full[i];
     }
   }

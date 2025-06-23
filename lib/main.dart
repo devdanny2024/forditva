@@ -202,9 +202,13 @@ class _MainScreenState extends State<MainScreen> {
       ),
 
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(
-          bottom: 20,
-        ), // 👈 Add bottom padding here
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          20,
+        ), // 👈 16 left/right, 20 bottom
+
         child: ClipRRect(
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(32),
@@ -256,7 +260,7 @@ class _MainScreenState extends State<MainScreen> {
                                         color: navRed,
                                         alignment: Alignment.center,
                                         child: Image.asset(
-                                          'assets/images/menu_w.png',
+                                          'assets/png24/white/w_menu.png',
                                           width: 35,
                                           height: 35,
                                           color: Colors.white,
@@ -283,10 +287,10 @@ class _MainScreenState extends State<MainScreen> {
                                   alignment: Alignment.center,
                                   child: Image.asset(
                                     _currentPage == 1
-                                        ? 'assets/images/w_discussion.png'
+                                        ? 'assets/png24/white/w_conversation.png'
                                         : _currentPage == 5
-                                        ? 'assets/images/document-mode_w.png'
-                                        : 'assets/images/photo_mode_w.png',
+                                        ? 'assets/png24/white/w_document.png'
+                                        : 'assets/png24/white/w_explain_image.png',
                                     width: 35,
                                     height: 35,
                                   ),
@@ -310,13 +314,18 @@ class _MainScreenState extends State<MainScreen> {
                                   alignment: Alignment.center,
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _getPageName(_currentPage),
-                                      maxLines: 1,
-                                      style: GoogleFonts.robotoCondensed(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 25,
-                                        color: Colors.black,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                      ), // 👈 Add spacing
+                                      child: Text(
+                                        _getPageName(_currentPage),
+                                        maxLines: 1,
+                                        style: GoogleFonts.robotoCondensed(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 18, // 👈 Smaller text size
+                                          color: Colors.black,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -328,45 +337,55 @@ class _MainScreenState extends State<MainScreen> {
                               child: Container(
                                 color: navGreen,
                                 alignment: Alignment.center,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    GestureDetector(
-                                      onTap:
-                                          () =>
-                                              setState(() => _currentPage = 2),
-                                      child: Image.asset(
-                                        'assets/images/learning_list_w.png',
-                                        width: 35,
-                                        height: 35,
-                                        colorBlendMode: BlendMode.srcIn,
+                                child: FittedBox(
+                                  // 👈 NEW
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GestureDetector(
+                                        onTap:
+                                            () => setState(
+                                              () => _currentPage = 2,
+                                            ),
+                                        child: Image.asset(
+                                          'assets/png24/white/w_learninglist.png',
+                                          width: 35,
+                                          height: 35,
+                                          colorBlendMode: BlendMode.srcIn,
+                                        ),
                                       ),
-                                    ),
-                                    SizedBox(width: 10),
-                                    GestureDetector(
-                                      onTap:
-                                          () =>
-                                              setState(() => _currentPage = 3),
-                                      child: Image.asset(
-                                        'assets/images/favorit_w.png',
-                                        width: 35,
-                                        height: 35,
-                                        colorBlendMode: BlendMode.srcIn,
+                                      SizedBox(width: 10),
+                                      GestureDetector(
+                                        onTap:
+                                            () => setState(
+                                              () => _currentPage = 3,
+                                            ),
+                                        child: Image.asset(
+                                          'assets/png24/white/w_favorit.png',
+                                          width: 35,
+                                          height: 35,
+                                          colorBlendMode: BlendMode.srcIn,
+                                        ),
                                       ),
-                                    ),
-                                    SizedBox(width: 10),
-                                    GestureDetector(
-                                      onTap:
-                                          () =>
-                                              setState(() => _currentPage = 4),
-                                      child: Image.asset(
-                                        'assets/images/history_1.png',
-                                        width: 35,
-                                        height: 35,
-                                        colorBlendMode: BlendMode.srcIn,
+                                      SizedBox(width: 10),
+                                      GestureDetector(
+                                        onTap:
+                                            () => setState(
+                                              () => _currentPage = 4,
+                                            ),
+                                        child: Image.asset(
+                                          'assets/png24/white/w_history.png',
+                                          width: 35,
+                                          height: 35,
+                                          colorBlendMode: BlendMode.srcIn,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      SizedBox(
+                                        width: 10,
+                                      ), // if you want space at the end
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),

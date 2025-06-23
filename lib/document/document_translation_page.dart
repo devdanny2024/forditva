@@ -1,22 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/db/database.dart';
 import 'package:forditva/models/language_enum.dart';
+import 'package:forditva/services/google_speech_to_text_service.dart';
 import 'package:forditva/utils/utils.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart'; // getTemporaryDirectory
 import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart'; // AudioRecorder, RecordConfig, AudioEncoder
 import 'package:share_plus/share_plus.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../services/gemini_translation_service.dart';
-import '../services/lingvanex_translation_service.dart';
 
 const Color navRed = Color(0xFFCD2A3E);
+const Color navGreen = Color(0xFF436F4D);
 
 bool _explain = false;
 Timer? _debounce;
@@ -36,17 +43,20 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   late final KeyboardVisibilityController _keyboardVisibilityController;
   late StreamSubscription<bool> _keyboardSubscription;
   bool _keyboardIsVisible = false;
+  bool _isRecording = false;
+  late final RecorderController _recorderController;
+  late final AudioRecorder _audioRecorder;
+  String? _recordPath;
+  bool _isInputLoading = false;
 
   late final FlutterTts _flutterTts;
   late stt.SpeechToText _speech;
   bool _isListening = false;
   final ScrollController _scrollController = ScrollController();
-  final String _explanationText = '';
-  final LingvanexTranslationService _lingvanex = LingvanexTranslationService();
   final GeminiTranslator _gemini = GeminiTranslator();
+
   String _explanationLevel = 'A2'; // default level
   late final AppDatabase _db;
-  final bool _skipDebounce = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -109,6 +119,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   @override
   void initState() {
     super.initState();
+    _recorderController = RecorderController();
+    _audioRecorder = AudioRecorder();
+
     _keyboardVisibilityController = KeyboardVisibilityController();
     _keyboardSubscription = _keyboardVisibilityController.onChange.listen((
       bool visible,
@@ -151,6 +164,8 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
   @override
   void dispose() {
+    _recorderController.dispose();
+
     _db.close(); // ← close the DB when the page is torn down
 
     _pulseController.dispose();
@@ -160,6 +175,87 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _keyboardSubscription.cancel();
 
     super.dispose();
+  }
+
+  Future<void> _startRecording() async {
+    setState(() => _isRecording = true);
+
+    final dir = await getTemporaryDirectory();
+    _recordPath =
+        '${dir.path}/record_${DateTime.now().millisecondsSinceEpoch}.wav';
+
+    // Start actual audio recording (for STT)
+    await _audioRecorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
+      path: _recordPath!,
+    );
+
+    // Start waveform visualization
+    _recorderController.record();
+  }
+
+  Future<void> _stopRecording() async {
+    setState(() {
+      _isRecording = false;
+      _isInputLoading = true;
+    });
+
+    await _recorderController.stop();
+    if (_recordPath == null) return;
+
+    await _audioRecorder.stop(); // Optional if also using AudioRecorder in doc
+
+    final file = File(_recordPath!);
+    if (!file.existsSync()) {
+      setState(() => _isInputLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Recording failed.")));
+      }
+      return;
+    }
+
+    try {
+      final sttService = GoogleSpeechToTextService(
+        dotenv.env['GOOGLE_STT_KEY']!,
+      );
+      final transcript = await sttService.transcribe(
+        file,
+        languageCode: _localeFor(_leftLang),
+      );
+
+      debugPrint('DEBUG: Transcript from Google STT: "$transcript"');
+
+      if (transcript != null && transcript.trim().isNotEmpty) {
+        final old = _inputController.text.trim();
+        final newText = ('$old ${transcript.trim()}').trim();
+
+        setState(() {
+          _inputController.text = newText;
+          _inputController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _inputController.text.length),
+          );
+        });
+
+        debugPrint('Updated text: "$newText"');
+      } else {
+        debugPrint('Transcript was empty or null');
+      }
+    } catch (e) {
+      debugPrint('Transcription error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Transcription failed: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isInputLoading = false);
+    }
   }
 
   void _onInputChanged() {
@@ -185,6 +281,33 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
         });
       }
     });
+  }
+
+  Widget _buildSection(String title, String content) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.robotoCondensed(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            content ?? '',
+            style: GoogleFonts.robotoCondensed(
+              fontSize: 16,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _listen() async {
@@ -279,8 +402,17 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
               }
             }
 
+            // parsing logic for structured Gemini JSON
+            Map<String, dynamic> parsed = {};
+            try {
+              final cleanJson = stripCodeFence(explanationText);
+              parsed = cleanJson.isNotEmpty ? jsonDecode(cleanJson) : {};
+            } catch (e) {
+              parsed = {};
+            }
+
             return Dialog(
-              backgroundColor: Colors.white, // white background
+              backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 side: const BorderSide(width: 0.5, color: Colors.black),
                 borderRadius: BorderRadius.circular(8),
@@ -292,15 +424,32 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header
+                    // --- HEADER WITH LOGO & TUTOR ---
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Explanation",
-                            style: TextStyle(fontSize: 18),
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 100,
+                                height: 100,
+                                child: Image.asset(
+                                  'assets/images/logo.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Tutor",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: navGreen,
+                                ),
+                              ),
+                            ],
                           ),
                           IconButton(
                             icon: const Icon(Icons.close),
@@ -319,13 +468,27 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child:
                             isLoading
-                                ? const Center(
-                                  child: CircularProgressIndicator(),
-                                )
+                                ? const Center(child: GifLoader(size: 80))
+                                : parsed.isEmpty
+                                ? Text(explanationText)
                                 : SingleChildScrollView(
-                                  child: Text(
-                                    explanationText,
-                                    style: GoogleFonts.roboto(fontSize: 16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildSection(
+                                        "Grammar Explanation",
+                                        parsed["grammar_explanation"],
+                                      ),
+                                      _buildSection(
+                                        "Key Vocabulary",
+                                        parsed["key_vocabulary"],
+                                      ),
+                                      _buildSection(
+                                        "Translation",
+                                        parsed["translation"],
+                                      ),
+                                    ],
                                   ),
                                 ),
                       ),
@@ -355,8 +518,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                     vertical: 8,
                                   ),
                                   decoration: BoxDecoration(
-                                    color:
-                                        active ? const Color(0xFFCD2A3E) : null,
+                                    color: active ? navRed : null,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
@@ -410,13 +572,13 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     });
 
     try {
-      final dynamic raw = await _lingvanex.translate(
-        data: currentText, // ← use currentText
-        fromLang: _lingvanexCode(_leftLang),
-        toLang: _lingvanexCode(_rightLang),
+      final result = await _gemini.translate(
+        currentText,
+        from,
+        to,
+        explain: false,
       );
-      final String result =
-          raw is List ? (raw).first.toString() : raw.toString();
+
       if (!mounted) return;
 
       if (_explain) {
@@ -424,16 +586,19 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       } else {
         setState(() => _translatedText = result);
 
-        // 3. Insert into the database now that you have `result`
-        await _db.translationDao.insertTranslation(
-          TranslationsCompanion.insert(
-            input: input,
-            output: result,
-            fromLang: from,
-            toLang: to,
-            // timestamp and isFavorite have defaults
-          ),
-        );
+        // Save to database as usual
+        try {
+          await _db.translationDao.insertTranslation(
+            TranslationsCompanion.insert(
+              input: input,
+              output: result,
+              fromLang: from,
+              toLang: to,
+            ),
+          );
+        } catch (e) {
+          debugPrint('DB insert failed: $e');
+        }
       }
     } catch (e) {
       debugPrint('Translation error: $e');
@@ -452,7 +617,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: GifLoader(size: 80)),
     );
 
     // Run the translation and close loader when done
@@ -467,7 +632,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    print('viewInsets.bottom: ${media.viewInsets.bottom}');
     final bool keyboardIsOpen = media.viewInsets.bottom > 50;
 
     final double cardWidth = 486;
@@ -484,184 +648,259 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
         height: cardHeight,
         decoration: BoxDecoration(
           color: Colors.white,
-          border: Border.all(color: Colors.black, width: 2),
           borderRadius: BorderRadius.circular(8),
         ),
+
         child: Column(
           children: [
-            // --- Top section: always at least 500px ---
-            SizedBox(
-              height: _keyboardIsVisible ? 420 : 300,
-              child: Stack(
-                children: [
-                  // Autosizing scrollable text field
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      16,
-                      16,
-                      56,
-                    ), // Leave space at bottom for controls
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        return ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: 40, // minimum height
-                            maxHeight: 200, // maximum height for input field
-                          ),
-                          child: SingleChildScrollView(
-                            // This scrolls only if text overflows
-                            child: TextField(
-                              controller: _inputController,
-                              maxLines: null,
-                              style: GoogleFonts.robotoCondensed(
-                                fontSize: inputFontSize,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: InputDecoration.collapsed(
-                                hintText: _placeholderForLang(_leftLang),
-                                hintStyle: GoogleFonts.robotoCondensed(
-                                  fontSize: 25,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              textInputAction: TextInputAction.done,
-                              onEditingComplete: () {
-                                FocusScope.of(context).unfocus();
-                                setState(() {});
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+            // 🔲 TOP PANEL
+            Expanded(
+              flex: 45,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.black, width: 0.5),
+                  image: const DecorationImage(
+                    image: AssetImage('assets/images/bg-bright.jpg'),
+                    fit: BoxFit.cover,
                   ),
-                  // The controls row is pinned to the bottom
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              Icons.mic,
-                              color: _isListening ? Colors.red : Colors.black,
-                            ),
-                            onPressed: () async {
-                              if (await Permission.microphone
-                                  .request()
-                                  .isGranted) {
-                                _listen();
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      "Microphone permission denied",
+                ),
+
+                padding: const EdgeInsets.all(16),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 60),
+                          child: SingleChildScrollView(
+                            child: Stack(
+                              children: [
+                                TextField(
+                                  controller: _inputController,
+                                  maxLines: null,
+                                  style: GoogleFonts.robotoCondensed(
+                                    fontSize: dynamicFontSize(
+                                      _inputController.text,
+                                    ),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  decoration: InputDecoration.collapsed(
+                                    hintText: _placeholderForLang(_leftLang),
+                                    hintStyle: GoogleFonts.robotoCondensed(
+                                      fontSize: 25,
+                                      color: Colors.grey,
                                     ),
                                   ),
-                                );
-                              }
-                            },
-                          ),
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap:
-                                () => setState(
-                                  () =>
-                                      _leftLang = _next(_leftLang, _rightLang),
+                                  textInputAction: TextInputAction.done,
+                                  onEditingComplete:
+                                      () => FocusScope.of(context).unfocus(),
                                 ),
-                            child: Row(
-                              children: [
-                                Image.asset(
-                                  _flagPaths[_leftLang]!,
-                                  width: 32,
-                                  height: 32,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _langLabels[_leftLang]!,
-                                  style: GoogleFonts.roboto(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black,
+
+                                if (_isInputLoading)
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation(
+                                          navRed,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: _switchLanguages,
-                            child: Image.asset(
-                              'assets/images/switch.png',
-                              width: 32,
-                              height: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap:
-                                () => setState(
-                                  () =>
-                                      _rightLang = _next(_rightLang, _leftLang),
-                                ),
+                        ),
+
+                        // 🎙 Only show when keyboard is visible
+                        if (_keyboardIsVisible)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
                             child: Row(
                               children: [
-                                Text(
-                                  _langLabels[_rightLang]!,
-                                  style: GoogleFonts.roboto(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black,
+                                const SizedBox(width: 8),
+
+                                // 🎙 Mic icon
+                                GestureDetector(
+                                  onTap: () async {
+                                    if (_isRecording) {
+                                      await _stopRecording();
+                                    } else {
+                                      if (await Permission.microphone
+                                          .request()
+                                          .isGranted) {
+                                        await _startRecording();
+                                      } else {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              "Microphone permission denied",
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: Icon(
+                                    _isRecording ? Icons.stop : Icons.mic,
+                                    size: 36,
+                                    color:
+                                        _isRecording
+                                            ? Colors.red
+                                            : Colors.black,
                                   ),
                                 ),
+
                                 const SizedBox(width: 4),
-                                Image.asset(
-                                  _flagPaths[_rightLang]!,
-                                  width: 32,
-                                  height: 32,
+
+                                // 🔊 Waveform or static
+                                SizedBox(
+                                  width: 90,
+                                  height: 50,
+                                  child:
+                                      _isRecording
+                                          ? AudioWaveforms(
+                                            enableGesture: false,
+                                            size: const Size(90, 50),
+                                            recorderController:
+                                                _recorderController,
+                                            waveStyle: const WaveStyle(
+                                              waveColor: Colors.green,
+                                              showMiddleLine: false,
+                                              extendWaveform: true,
+                                              spacing: 4,
+                                              scaleFactor: 60,
+                                            ),
+                                          )
+                                          : _StaticWave(),
                                 ),
+
+                                const Spacer(),
+
+                                // 🗑 Trash
+                                IconButton(
+                                  icon: Image.asset(
+                                    'assets/png24/black/b_garbage.png',
+                                    width: 28,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _inputController.clear();
+                                      _translatedText = '';
+                                      _explain = false;
+                                      _scrollController.jumpTo(0);
+                                    });
+                                  },
+                                ),
+
+                                const SizedBox(width: 8),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          IconButton(
-                            icon: Image.asset(
-                              'assets/images/delete.png',
-                              width: 28,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _inputController.clear();
-                                _translatedText = '';
-                                _explain = false;
-                                _scrollController.jumpTo(0);
-                              });
-                            },
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            // 🔁 SWITCHER PANEL
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap:
+                        () => setState(
+                          () => _leftLang = _next(_leftLang, _rightLang),
+                        ),
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          _flagPaths[_leftLang]!,
+                          width: 32,
+                          height: 32,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _langLabels[_leftLang]!,
+                          style: GoogleFonts.roboto(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _switchLanguages,
+                    child: Image.asset(
+                      'assets/png24/black/b_change_flat.png',
+                      width: 32,
+                      height: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap:
+                        () => setState(
+                          () => _rightLang = _next(_rightLang, _leftLang),
+                        ),
+                    child: Row(
+                      children: [
+                        Text(
+                          _langLabels[_rightLang]!,
+                          style: GoogleFonts.roboto(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Image.asset(
+                          _flagPaths[_rightLang]!,
+                          width: 32,
+                          height: 32,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                 ],
               ),
             ),
 
-            // --- Divider ---
-            const Divider(height: 1, thickness: 1),
-            // --- Output panel: only when keyboard is closed ---
+            // 🔳 BOTTOM PANEL
             if (!_keyboardIsVisible)
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                flex: 45,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black, width: 0.5),
+                    image: const DecorationImage(
+                      image: AssetImage('assets/images/bg-bright.jpg'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
                       Expanded(
@@ -672,7 +911,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                 ? _translatingText(_rightLang)
                                 : _translatedText,
                             style: GoogleFonts.robotoCondensed(
-                              fontSize: outputFontSize,
+                              fontSize: dynamicFontSize(_translatedText),
                               fontWeight: FontWeight.w500,
                               color:
                                   _isTranslating ? Colors.grey : Colors.black,
@@ -684,7 +923,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                         children: [
                           IconButton(
                             icon: Image.asset(
-                              'assets/images/copy.png',
+                              'assets/png24/black/b_copy.png',
                               width: 28,
                             ),
                             onPressed: () {
@@ -702,7 +941,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                           ),
                           IconButton(
                             icon: Image.asset(
-                              'assets/images/share.png',
+                              'assets/png24/black/b_share.png',
                               width: 28,
                             ),
                             onPressed: () {
@@ -713,7 +952,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                           ),
                           IconButton(
                             icon: Image.asset(
-                              'assets/images/zoom.png',
+                              'assets/png24/black/b_fullscreen.png',
                               width: 34,
                             ),
                             onPressed: () {
@@ -766,10 +1005,11 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                               );
                                               return 'Failed to load explanation.';
                                             } finally {
-                                              if (mounted)
+                                              if (mounted) {
                                                 setState(
                                                   () => _isTranslating = false,
                                                 );
+                                              }
                                             }
                                           });
                                         } else {
@@ -780,7 +1020,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                       },
                             ),
                           ),
-                          Spacer(),
+                          const Spacer(),
                           GestureDetector(
                             onTap: () async {
                               if (_translatedText.isNotEmpty) {
@@ -791,7 +1031,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                 _isSpeaking
                                     ? Transform.scale(
                                       scale: _pulseAnim.value,
-                                      child: SizedBox(
+                                      child: const SizedBox(
                                         width: 34,
                                         height: 34,
                                         child: CircularProgressIndicator(
@@ -803,7 +1043,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                       ),
                                     )
                                     : Image.asset(
-                                      'assets/images/play-sound.png',
+                                      'assets/png24/black/b_speaker.png',
                                       width: 34,
                                     ),
                           ),
@@ -822,11 +1062,11 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   String _placeholderForLang(Language lang) {
     switch (lang) {
       case Language.hungarian:
-        return "Kezdje el a beírást...";
+        return "Írja be ide a szöveget, vagy illessze be a vágólapról.";
       case Language.german:
-        return "Beginnen Sie mit der Eingabe...";
+        return "ippe hier den Text oder füge ihn aus der Zwischenablage ein.";
       default:
-        return "Begin typing...";
+        return "Type the text here or paste it from the clipboard.";
     }
   }
 }
@@ -887,4 +1127,35 @@ class LandscapeZoomModal extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StaticWave extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(size: const Size(90, 50), painter: _GreenWavePainter());
+  }
+}
+
+class _GreenWavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = Colors.green
+          ..strokeWidth = 8
+          ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < 6; i++) {
+      final dx = 8 + i * 14.0;
+      final waveHeight = (i % 2 == 0) ? 20.0 : 35.0;
+      canvas.drawLine(
+        Offset(dx, size.height / 2 - waveHeight / 2),
+        Offset(dx, size.height / 2 + waveHeight / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
