@@ -372,3 +372,21 @@ List<dynamic>? robustJsonArrayExtractor(String input) {
   // Fully failed
   return null;
 }
+
+double getSymmetricTopPadding(String text) {
+  final adjusted = insertLineBreaksEveryNWords(text, 3);
+  final lines = countLines(adjusted);
+
+  switch (lines) {
+    case 1:
+      return 140;
+    case 2:
+      return 120;
+    case 3:
+      return 100;
+    case 4:
+      return 80;
+    default:
+      return 70;
+  }
+}

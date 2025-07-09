@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:forditva/document/document_language_state.dart';
+import 'package:forditva/document/translationstate.dart';
 import 'package:forditva/widgets/splash_screen.dart'; // Adjust path!
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import 'document/document_translation_page.dart';
 import 'favorite.dart';
@@ -23,8 +27,22 @@ enum Language { hungarian, german, english }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(); // Load .env variables
-  runApp(const MyApp());
+
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  await dotenv.load();
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => TranslationState()),
+        ChangeNotifierProvider(create: (_) => DocumentLanguageState()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -337,11 +355,14 @@ class _MainScreenState extends State<MainScreen> {
                               child: Container(
                                 color: navGreen,
                                 alignment: Alignment.center,
-                                child: FittedBox(
-                                  // 👈 NEW
-                                  fit: BoxFit.scaleDown,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    right: 10,
+                                  ), // padding at right edge
                                   child: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment
+                                            .spaceEvenly, // even spacing
                                     children: [
                                       GestureDetector(
                                         onTap:
@@ -355,7 +376,6 @@ class _MainScreenState extends State<MainScreen> {
                                           colorBlendMode: BlendMode.srcIn,
                                         ),
                                       ),
-                                      SizedBox(width: 10),
                                       GestureDetector(
                                         onTap:
                                             () => setState(
@@ -368,7 +388,6 @@ class _MainScreenState extends State<MainScreen> {
                                           colorBlendMode: BlendMode.srcIn,
                                         ),
                                       ),
-                                      SizedBox(width: 10),
                                       GestureDetector(
                                         onTap:
                                             () => setState(
@@ -381,9 +400,6 @@ class _MainScreenState extends State<MainScreen> {
                                           colorBlendMode: BlendMode.srcIn,
                                         ),
                                       ),
-                                      SizedBox(
-                                        width: 10,
-                                      ), // if you want space at the end
                                     ],
                                   ),
                                 ),

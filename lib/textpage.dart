@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math; // ← Add this at the top of your file
 
 import 'package:audioplayers/audioplayers.dart' as ap;
@@ -413,38 +414,208 @@ class _TextPageState extends State<TextPage> {
     }
   }
 
-  Future<void> _playSoundAndReveal({
-    required String text,
-    required Language lang,
-    required String instructions,
-    required VoidCallback onReveal,
-  }) async {
-    try {
-      const voice = "onyx";
-      final file = await _ttsService.synthesizeSpeech(
-        text: text,
-        voice: voice,
-        instructions: instructions,
-      );
+  String _explanationLevel = 'A2';
 
-      if (!await file.exists() || (await file.length()) == 0) {
-        onReveal(); // Reveal anyway if audio fails
-        return;
-      }
+  void _showExplanationModal(String initialExplanation) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        String explanationText = initialExplanation;
+        bool isLoading = false;
 
-      final player = ap.AudioPlayer();
-      StreamSubscription<ap.PlayerState>? stateSub;
-      stateSub = player.onPlayerStateChanged.listen((state) {
-        if (state == ap.PlayerState.playing) {
-          onReveal();
-          stateSub?.cancel(); // Cancel the subscription after revealing
-        }
-      });
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void fetchExplanation(String level) async {
+              setModalState(() => isLoading = true);
+              try {
+                final newExp = await _gemini.translate(
+                  _inputController.text.trim(),
+                  _langLabels[_leftLanguage]!,
+                  _langLabels[_rightLanguage]!,
+                  explain: true,
+                  level: level,
+                );
+                setModalState(() {
+                  explanationText = newExp;
+                });
+              } catch (_) {
+                setModalState(() {
+                  explanationText = 'Failed to load explanation.';
+                });
+              } finally {
+                setModalState(() => isLoading = false);
+              }
+            }
 
-      await player.play(ap.DeviceFileSource(file.path));
-    } catch (e) {
-      onReveal(); // Reveal anyway on error
-    }
+            Map<String, dynamic> parsed = {};
+            try {
+              final cleanJson = stripCodeFence(explanationText);
+              parsed = cleanJson.isNotEmpty ? jsonDecode(cleanJson) : {};
+            } catch (_) {}
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(width: 0.5, color: Colors.black),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Image.asset(
+                                'assets/images/logo.png',
+                                width: 80,
+                                height: 80,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Tutor",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: navGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child:
+                            isLoading
+                                ? const Center(
+                                  child: CircularProgressIndicator(),
+                                )
+                                : parsed.isEmpty
+                                ? Text(explanationText)
+                                : SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildSection(
+                                        "Grammar Explanation",
+                                        parsed["grammar_explanation"],
+                                      ),
+                                      _buildSection(
+                                        "Key Vocabulary",
+                                        parsed["key_vocabulary"],
+                                      ),
+                                      _buildSection(
+                                        "Translation",
+                                        parsed["translation"],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                      ),
+                    ),
+                    const Divider(),
+                    Container(
+                      color: Colors.grey[200],
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children:
+                            ['A1', 'A2', 'B1'].map((level) {
+                              final active = _explanationLevel == level;
+                              return GestureDetector(
+                                onTap: () {
+                                  setModalState(
+                                    () => _explanationLevel = level,
+                                  );
+                                  fetchExplanation(level);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: active ? navRed : null,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    level,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      color:
+                                          active ? Colors.white : Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSection(String title, String? content) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.robotoCondensed(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            content ?? '',
+            style: GoogleFonts.robotoCondensed(
+              fontSize: 16,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLoaderBeforeModal(
+    Future<String> Function() loadExplanation,
+  ) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: GifLoader(size: 80)),
+    );
+
+    final explanation = await loadExplanation();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    _showExplanationModal(explanation);
   }
 
   bool _isTopRecording = false;
@@ -453,9 +624,10 @@ class _TextPageState extends State<TextPage> {
   Future<void> _openRecordingCustom({
     required Language from,
     required Language to,
-    required bool isTopPanel, // true = output/top, false = input/bottom
+    required bool isTopPanel,
   }) async {
-    // Set recording state to true for correct panel
+    print('Opening recording modal - top? $isTopPanel');
+
     setState(() {
       if (isTopPanel) {
         _isTopRecording = true;
@@ -463,111 +635,6 @@ class _TextPageState extends State<TextPage> {
         _isBottomRecording = true;
       }
     });
-
-    await showDialog(
-      context: context,
-      barrierColor: Colors.transparent,
-      barrierDismissible: false,
-      builder:
-          (context) => Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 340, maxHeight: 180),
-              child: RecordingModal(
-                lang: from,
-                isTopPanel: isTopPanel,
-                onTranscribed: (transcript) async {
-                  if (transcript.trim().isEmpty) {
-                    if (mounted)
-                      setState(() {
-                        _isTranslating = false;
-                        if (isTopPanel) {
-                          _isTopRecording = false;
-                        } else {
-                          _isBottomRecording = false;
-                        }
-                      });
-                    return;
-                  }
-
-                  if (mounted) setState(() => _isTranslating = true);
-
-                  if (isTopPanel) {
-                    setState(() {
-                      _translation = transcript;
-                    });
-                  } else {
-                    setState(() {
-                      _inputController.text = transcript;
-                    });
-                  }
-
-                  final geminiResult = await translateFinal(
-                    transcript,
-                    from.code,
-                    to.code,
-                  );
-
-                  if (isTopPanel) {
-                    setState(() {
-                      _inputController.text = geminiResult;
-                      _isTranslating = false;
-                    });
-                    setState(() => _isAudioLoadingInput = true);
-                    await _playSoundWithOpenAI(
-                      _inputController.text,
-                      _leftLanguage,
-                      instructionForLang(_leftLanguage),
-                      () {},
-                      () {
-                        if (mounted)
-                          setState(() => _isAudioLoadingInput = false);
-                      },
-                    );
-                  } else {
-                    setState(() {
-                      _translation = geminiResult;
-                      _isTranslating = false;
-                    });
-                    setState(() => _isAudioLoadingOutput = true);
-                    await _playSoundWithOpenAI(
-                      _translation,
-                      _rightLanguage,
-                      instructionForLang(_rightLanguage),
-                      () {},
-                      () {
-                        if (mounted)
-                          setState(() => _isAudioLoadingOutput = false);
-                      },
-                    );
-                  }
-
-                  // Reset recording state after transcription finishes
-                  setState(() {
-                    if (isTopPanel) {
-                      _isTopRecording = false;
-                    } else {
-                      _isBottomRecording = false;
-                    }
-                  });
-                },
-
-                // This is the important part for cancel behavior:
-                onCancel: () {
-                  setState(() {
-                    if (isTopPanel) {
-                      _isTopRecording = false;
-                    } else {
-                      _isBottomRecording = false;
-                    }
-                  });
-                  Navigator.of(context).pop();
-                },
-
-                onPartialTranscript: (partial) {},
-              ),
-            ),
-          ),
-    );
   }
 
   late final FlutterTts _flutterTts;
@@ -669,6 +736,10 @@ class _TextPageState extends State<TextPage> {
         final outputCardHeight = halfH + switchSize / 2;
         final switchRowTop = halfH - switchSize / 2 / 0.7;
         final rightOverlayTop = halfH - switchSize / 2 / 0.7;
+        print(
+          '_isTopRecording: $_isTopRecording, _isBottomRecording: $_isBottomRecording',
+        );
+
         return Container(
           padding: const EdgeInsets.only(top: 30, bottom: 0),
           child: Stack(
@@ -692,6 +763,28 @@ class _TextPageState extends State<TextPage> {
                   onStopSound: _stopInputSound,
                   isAudioLoading: _isAudioLoadingInput,
                   onCopy: () => _copyText(_translation),
+                  onMicCancel: () => setState(() => _isTopRecording = false),
+                  onExplain: () {
+                    final currentText = _inputController.text.trim();
+                    if (currentText.isNotEmpty) {
+                      setState(() => _isTranslating = true);
+                      _showLoaderBeforeModal(() async {
+                        try {
+                          return await _gemini.translate(
+                            currentText,
+                            _langLabels[_leftLanguage]!,
+                            _langLabels[_rightLanguage]!,
+                            explain: true,
+                            level: _explanationLevel,
+                          );
+                        } catch (_) {
+                          return 'Failed to load explanation.';
+                        } finally {
+                          if (mounted) setState(() => _isTranslating = false);
+                        }
+                      });
+                    }
+                  },
 
                   // ----- NEW: Stack Modal Editing
                   onEditTap: () {
@@ -730,11 +823,13 @@ class _TextPageState extends State<TextPage> {
                   },
 
                   onMicTap:
-                      () => _openRecordingCustom(
-                        from: _rightLanguage,
-                        to: _leftLanguage,
-                        isTopPanel: true,
-                      ),
+                      _isBottomRecording
+                          ? null
+                          : () => _openRecordingCustom(
+                            from: _rightLanguage,
+                            to: _leftLanguage,
+                            isTopPanel: true,
+                          ),
                 ),
               ),
               // Left overlay
@@ -756,14 +851,18 @@ class _TextPageState extends State<TextPage> {
                   onStopSound: _stopOutputSound,
                   controller: _inputController,
                   isRecording: _isBottomRecording,
-
                   onMicTap:
-                      () => _openRecordingCustom(
-                        from: _leftLanguage,
-                        to: _rightLanguage,
-                        isTopPanel: false,
-                      ),
+                      _isTopRecording
+                          ? null
+                          : () => _openRecordingCustom(
+                            from: _leftLanguage,
+                            to: _rightLanguage,
+                            isTopPanel: false,
+                          ),
+
                   // ----- NEW: Stack Modal Editing
+                  onMicCancel: () => setState(() => _isBottomRecording = false),
+
                   onEditTap: () {
                     showEditTextModal(
                       context: context,
@@ -975,6 +1074,75 @@ class _TextPageState extends State<TextPage> {
                   ),
                 ),
               ),
+              // === INLINE RECORDING PANELS (Non-modal) ===
+              if (_isTopRecording)
+                Positioned.fill(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 0),
+                      child: RecordingModal(
+                        lang: _rightLanguage,
+                        isTopPanel: true,
+                        onTranscribed: (txt) async {
+                          if (txt.trim().isNotEmpty) {
+                            setState(() {
+                              _translation = txt;
+                              _isTranslating = true;
+                            });
+
+                            final result = await translateFinal(
+                              txt,
+                              _rightLanguage.code,
+                              _leftLanguage.code,
+                            );
+
+                            setState(() {
+                              _inputController.text = result;
+                              _isTranslating = false;
+                            });
+                          }
+                          setState(() => _isTopRecording = false);
+                        },
+                        onCancel: () => setState(() => _isTopRecording = false),
+                      ),
+                    ),
+                  ),
+                ),
+
+              if (_isBottomRecording)
+                Positioned.fill(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 0),
+                      child: RecordingModal(
+                        lang: _leftLanguage,
+                        isTopPanel: false,
+                        onTranscribed: (txt) async {
+                          if (txt.trim().isNotEmpty) {
+                            setState(() {
+                              _inputController.text = txt;
+                              _isTranslating = true;
+                            });
+
+                            final result = await translateFinal(
+                              txt,
+                              _leftLanguage.code,
+                              _rightLanguage.code,
+                            );
+
+                            setState(() {
+                              _translation = result;
+                              _isTranslating = false;
+                            });
+                          }
+                          setState(() => _isBottomRecording = false);
+                        },
+                        onCancel:
+                            () => setState(() => _isBottomRecording = false),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -999,6 +1167,7 @@ class TranslationInputCard extends StatelessWidget {
   final bool isAudioPlaying;
   final VoidCallback? onStopSound;
   final bool isRecording; // <-- 🔥 new
+  final VoidCallback? onMicCancel; // <-- add this line
 
   const TranslationInputCard({
     super.key,
@@ -1015,12 +1184,13 @@ class TranslationInputCard extends StatelessWidget {
     this.onStopSound,
     this.onMicTap,
     required this.isRecording, // <-- 🔥 new
+    this.onMicCancel,
   });
 
   @override
   Widget build(BuildContext context) {
-    const double reservedTop = 100;
-    final double reservedBot = getInputTopPadding(text);
+    const double reservedTop = 80;
+    final double reservedBot = getSymmetricTopPadding(text);
     final double fontSize = calculateFontSize(text).clamp(30.0, 50.0);
 
     return LayoutBuilder(
@@ -1086,25 +1256,27 @@ class TranslationInputCard extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () {
                       if (isRecording) {
-                        Navigator.of(context).pop();
-                      } else {
-                        onMicTap?.call();
+                        onMicCancel?.call();
+                      } else if (onMicTap != null) {
+                        onMicTap!(); // only allow if not disabled externally
                       }
                     },
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: AssetImage(
-                            flagAsset(toLang, whiteBorder: true),
+
+                    child: RotatedBox(
+                      // 🔄 Flip the flag + mic together
+                      quarterTurns: 2,
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: AssetImage(
+                              flagAsset(toLang, whiteBorder: true),
+                            ),
+                            fit: BoxFit.cover,
                           ),
-                          fit: BoxFit.cover,
                         ),
-                      ),
-                      child: Center(
-                        child: RotatedBox(
-                          quarterTurns: 2,
+                        child: Center(
                           child: Image.asset(
                             isRecording
                                 ? 'assets/images/stoprec.png'
@@ -1122,7 +1294,7 @@ class TranslationInputCard extends StatelessWidget {
               // Bulb icon (left)
               Positioned(
                 top: 20,
-                left: 8,
+                left: 20,
                 child: GestureDetector(
                   onTap: onExplain,
                   child: Transform.rotate(
@@ -1138,7 +1310,7 @@ class TranslationInputCard extends StatelessWidget {
               // Copy/Play icons (right)
               Positioned(
                 top: 20,
-                right: 8,
+                right: 20,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1172,10 +1344,10 @@ class TranslationInputCard extends StatelessWidget {
                         if (isAudioPlaying)
                           GestureDetector(
                             onTap: onStopSound,
-                            child: Icon(
-                              Icons.stop,
-                              size: 40,
-                              color: Colors.red,
+                            child: Image.asset(
+                              'assets/images/w_stop.png',
+                              width: 40,
+                              height: 40,
                             ),
                           )
                         else
@@ -1207,7 +1379,7 @@ class TranslationOutputCard extends StatelessWidget {
   final Language fromLang;
   final Language toLang;
   final TextEditingController controller;
-  final Future<void> Function() onMicTap;
+  final Future<void> Function()? onMicTap;
   final VoidCallback? onEditTap;
   final bool isBusy; // <-- Add this!
   final bool isAudioLoading; // <-- Add this
@@ -1216,6 +1388,7 @@ class TranslationOutputCard extends StatelessWidget {
   final bool isAudioPlaying;
   final VoidCallback? onStopSound;
   final bool isRecording;
+  final VoidCallback? onMicCancel; // <-- add this line
 
   const TranslationOutputCard({
     super.key,
@@ -1223,6 +1396,7 @@ class TranslationOutputCard extends StatelessWidget {
     required this.toLang,
     required this.controller,
     required this.isBusy, // <-- Add this!
+
     required this.onMicTap,
     this.onEditTap,
     this.onCopy,
@@ -1231,11 +1405,12 @@ class TranslationOutputCard extends StatelessWidget {
     this.onStopSound,
     required this.isAudioLoading,
     required this.isRecording, // <-- 🔥 new
+    this.onMicCancel,
   });
 
   @override
   Widget build(BuildContext context) {
-    final double topReserved = getOutputTopPadding(controller.text);
+    final double topReserved = getSymmetricTopPadding(controller.text);
     const double bottomReserved = 110;
     final double fontSize = calculateFontSize(
       controller.text,
@@ -1272,7 +1447,7 @@ class TranslationOutputCard extends StatelessWidget {
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Align(
-                    alignment: Alignment(0.0, topPaddingToAlign(topPadding)),
+                    alignment: Alignment.center,
                     child: SmartScrollableText(
                       text: controller.text,
                       fontSize: fontSize,
@@ -1295,11 +1470,12 @@ class TranslationOutputCard extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () {
                     if (isRecording) {
-                      Navigator.of(context).pop();
-                    } else {
-                      onMicTap.call();
+                      onMicCancel?.call();
+                    } else if (onMicTap != null) {
+                      onMicTap!(); // prevent tapping if disabled
                     }
                   },
+
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -1323,7 +1499,7 @@ class TranslationOutputCard extends StatelessWidget {
               // Edit/copy/play icons on left/right (unchanged)
               Positioned(
                 bottom: 35,
-                left: 8,
+                left: 20,
                 child: GestureDetector(
                   onTap: onEditTap,
                   child: Image.asset(
@@ -1335,7 +1511,7 @@ class TranslationOutputCard extends StatelessWidget {
               ),
               Positioned(
                 bottom: 35,
-                right: 8,
+                right: 20,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1366,10 +1542,10 @@ class TranslationOutputCard extends StatelessWidget {
                         if (isAudioPlaying)
                           GestureDetector(
                             onTap: onStopSound,
-                            child: Icon(
-                              Icons.stop,
-                              size: 40,
-                              color: Colors.red,
+                            child: Image.asset(
+                              'assets/images/w_stop.png',
+                              width: 40,
+                              height: 40,
                             ),
                           )
                         else

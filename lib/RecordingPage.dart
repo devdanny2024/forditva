@@ -423,9 +423,16 @@ class _RecordingPageState extends State<RecordingPage>
             left: 16,
             child: GestureDetector(
               onTap: () async {
-                if (_isListening) await _toggle();
-                Navigator.of(context).pop();
+                if (_isListening) {
+                  if (_continuousListening) {
+                    await _stopRecording();
+                  } else {
+                    await _stopListening();
+                  }
+                }
+                if (mounted) Navigator.of(context).pop();
               },
+
               child: const Icon(Icons.close, size: 30),
             ),
           ),

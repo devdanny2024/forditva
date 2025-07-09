@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:audio_waveforms/audio_waveforms.dart';
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/db/database.dart';
+import 'package:forditva/document/document_translation_state.dart';
 import 'package:forditva/models/language_enum.dart';
+import 'package:forditva/services/OpenAiTtsService.dart'; // already used in TextPage
 import 'package:forditva/services/google_speech_to_text_service.dart';
 import 'package:forditva/utils/utils.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -48,25 +50,20 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   late final AudioRecorder _audioRecorder;
   String? _recordPath;
   bool _isInputLoading = false;
+  final _ttsService = OpenAiTtsService(); // 👈 Gemini/OpenAI TTS wrapper
+  ap.AudioPlayer? _ttsAudioPlayer; // 👈 audio player instance
+  double _zoomLevel = 1.0; // Default zoom factor
 
   late final FlutterTts _flutterTts;
   late stt.SpeechToText _speech;
-  bool _isListening = false;
+  final bool _isListening = false;
   final ScrollController _scrollController = ScrollController();
   final GeminiTranslator _gemini = GeminiTranslator();
+  late TextEditingController _inputController;
+  late FocusNode _inputFocusNode;
 
   String _explanationLevel = 'A2'; // default level
   late final AppDatabase _db;
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final locale = Localizations.localeOf(context);
-    final pair = getInitialLangPair(locale);
-    setState(() {
-      _leftLang = pair[0];
-      _rightLang = pair[1];
-    });
-  }
 
   Language _leftLang = Language.english;
   Language _rightLang = Language.hungarian;
@@ -82,6 +79,17 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     Language.german: 'DE',
     Language.hungarian: 'HU',
   };
+  String instructionForLang(Language lang) {
+    switch (lang) {
+      case Language.hungarian:
+        return "Speak as this dialect: Hungarian";
+      case Language.german:
+        return "Speak as this dialect: German";
+      case Language.english:
+      default:
+        return "Speak as this dialect: English";
+    }
+  }
 
   String _localeFor(Language lang) {
     switch (lang) {
@@ -106,22 +114,86 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     }
   }
 
+  String _detectedLangDialog(Language lang, String detectedLangName) {
+    switch (lang) {
+      case Language.hungarian:
+        return "Az észlelt nyelv: $detectedLangName. Szeretné módosítani a beállítást erre?";
+      case Language.german:
+        return "Die erkannte Sprache ist $detectedLangName. Sollen wir deine Einstellung darauf anpassen?";
+      case Language.english:
+      default:
+        return "The detected language is $detectedLangName. Should we change your setting to this?";
+    }
+  }
+
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnim;
   bool _isSpeaking = false;
   Future<void> _speak() async {
     if (_translatedText.isEmpty) return;
-    final locale = _localeFor(_rightLang);
-    await _flutterTts.setLanguage(locale);
-    await _flutterTts.speak(_translatedText);
+
+    try {
+      final instructions = instructionForLang(_leftLang);
+      final file = await _ttsService.synthesizeSpeech(
+        text: _translatedText,
+        voice: "onyx",
+        instructions: instructions,
+      );
+
+      if (!await file.exists() || (await file.length()) == 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("TTS failed: ${file.path}")));
+        }
+        return;
+      }
+
+      _ttsAudioPlayer ??= ap.AudioPlayer();
+      await _ttsAudioPlayer!.stop();
+
+      late final StreamSubscription sub;
+      sub = _ttsAudioPlayer!.onPlayerStateChanged.listen((state) {
+        if (!mounted) return;
+
+        if (state == ap.PlayerState.playing) {
+          setState(() => _isSpeaking = true);
+        } else if (state == ap.PlayerState.completed ||
+            state == ap.PlayerState.stopped) {
+          setState(() => _isSpeaking = false);
+          sub.cancel();
+        }
+      });
+
+      await _ttsAudioPlayer!.play(ap.DeviceFileSource(file.path));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("TTS failed: $e")));
+        setState(() => _isSpeaking = false);
+      }
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    _inputFocusNode = FocusNode();
+
+    final locale =
+        WidgetsBinding.instance.window.locale; // safer than waiting for context
+    final pair = getInitialLangPair(locale);
+
+    // Only set if not manually overridden before
+    _leftLang = pair[0];
+    _rightLang = pair[1];
     _recorderController = RecorderController();
     _audioRecorder = AudioRecorder();
-
+    _inputController = TextEditingController(
+      text: DocumentTranslationState.inputText,
+    );
+    _translatedText = DocumentTranslationState.translatedText;
     _keyboardVisibilityController = KeyboardVisibilityController();
     _keyboardSubscription = _keyboardVisibilityController.onChange.listen((
       bool visible,
@@ -146,6 +218,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _pulseAnim = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    _inputController.addListener(_onInputChanged);
 
     // 2. TTS event hooks
     _flutterTts.setStartHandler(() {
@@ -162,11 +235,20 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     });
   }
 
+  Language _langFromCode(String code) {
+    return Language.values.firstWhere(
+      (lang) => lang.code.toLowerCase() == code.toLowerCase(),
+      orElse: () => _leftLang, // fallback to current
+    );
+  }
+
   @override
   void dispose() {
     _recorderController.dispose();
+    _inputFocusNode.dispose();
 
     _db.close(); // ← close the DB when the page is torn down
+    _ttsAudioPlayer?.dispose();
 
     _pulseController.dispose();
     _debounce?.cancel();
@@ -226,7 +308,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       );
       final transcript = await sttService.transcribe(
         file,
-        languageCode: _localeFor(_leftLang),
+        languageCode: _localeFor(_rightLang),
       );
 
       debugPrint('DEBUG: Transcript from Google STT: "$transcript"');
@@ -259,23 +341,21 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   void _onInputChanged() {
-    // Cancel any pending translation
+    // Update global state
+    DocumentTranslationState.inputText = _inputController.text;
+
     if (_debounce?.isActive ?? false) _debounce?.cancel();
 
-    // Immediately clear the old translation and show the "Translating…" text
     setState(() {
       _translatedText = '';
       _isTranslating = true;
     });
 
-    // Wait 1 second after the last keystroke, then actually translate
     _debounce = Timer(const Duration(seconds: 1), () {
       final currentText = _inputController.text.trim();
-
       if (currentText.isNotEmpty) {
         _translateText(currentText);
       } else {
-        // No input → stop the translating indicator
         setState(() {
           _isTranslating = false;
         });
@@ -310,63 +390,20 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     );
   }
 
-  Future<void> _listen() async {
-    // If we’re already listening, cancel that session so the recognizer releases.
-    if (_speech.isListening) {
-      await _speech.cancel(); // ← fully tear down prior session
-      await Future.delayed(
-        const Duration(milliseconds: 200),
-      ); // give the system a moment
-    }
-
-    // (Re-)initialize if needed; returns false if mic permission denied
-    final available = await _speech.initialize(
-      onStatus: (status) {
-        if (!mounted) return;
-        setState(() => _isListening = status == 'listening');
-      },
-      onError: (err) {
-        if (!mounted) return;
-        setState(() => _isListening = false);
-      },
-    );
-
-    if (!available) return;
-
-    _speech.listen(
-      onResult: (result) {
-        if (!mounted) return;
-
-        // always update interim text
-        setState(() => _inputController.text = result.recognizedWords);
-
-        // only fire translation & DB write on the final result
-        if (result.finalResult) {
-          final text = result.recognizedWords.trim();
-          if (text.isNotEmpty) {
-            _speech.cancel(); // free the recognizer again
-            _translateText(text);
-          }
-        }
-      },
-      partialResults: true, // show live interim transcripts
-      pauseFor: const Duration(seconds: 3),
-      cancelOnError: true,
-    );
-  }
-
-  final TextEditingController _inputController = TextEditingController();
   String _translatedText = '';
 
   void _switchLanguages() {
     setState(() {
-      final tempLang = _leftLang;
-      _leftLang = _rightLang;
-      _rightLang = tempLang;
+      final tempLang = _rightLang;
+      _rightLang = _leftLang;
+      _leftLang = tempLang;
 
       final tempText = _inputController.text;
       _inputController.text = _translatedText;
       _translatedText = tempText;
+
+      final input = _inputController.text.trim();
+      if (input.isNotEmpty) _translateText(input);
     });
   }
 
@@ -562,8 +599,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   Future<void> _translateText(String input) async {
-    final from = _langLabels[_leftLang]!;
-    final to = _langLabels[_rightLang]!;
+    final from = _langLabels[_rightLang]!; // used to be _leftLang
+    final to = _langLabels[_leftLang]!; // used to be _rightLang
+
     final String currentText = _inputController.text.trim();
 
     setState(() {
@@ -584,21 +622,10 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       if (_explain) {
         _showExplanationModal(result);
       } else {
-        setState(() => _translatedText = result);
-
-        // Save to database as usual
-        try {
-          await _db.translationDao.insertTranslation(
-            TranslationsCompanion.insert(
-              input: input,
-              output: result,
-              fromLang: from,
-              toLang: to,
-            ),
-          );
-        } catch (e) {
-          debugPrint('DB insert failed: $e');
-        }
+        setState(() {
+          _translatedText = result;
+          DocumentTranslationState.translatedText = result;
+        });
       }
     } catch (e) {
       debugPrint('Translation error: $e');
@@ -642,254 +669,28 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     double inputFontSize = dynamicFontSize(inputText);
     double outputFontSize = dynamicFontSize(outText);
 
-    return Center(
-      child: Container(
-        width: cardWidth,
-        height: cardHeight,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-        ),
-
-        child: Column(
-          children: [
-            // 🔲 TOP PANEL
-            Expanded(
-              flex: 45,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.black, width: 0.5),
-                  image: const DecorationImage(
-                    image: AssetImage('assets/images/bg-bright.jpg'),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-
-                padding: const EdgeInsets.all(16),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 60),
-                          child: SingleChildScrollView(
-                            child: Stack(
-                              children: [
-                                TextField(
-                                  controller: _inputController,
-                                  maxLines: null,
-                                  style: GoogleFonts.robotoCondensed(
-                                    fontSize: dynamicFontSize(
-                                      _inputController.text,
-                                    ),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  decoration: InputDecoration.collapsed(
-                                    hintText: _placeholderForLang(_leftLang),
-                                    hintStyle: GoogleFonts.robotoCondensed(
-                                      fontSize: 25,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  textInputAction: TextInputAction.done,
-                                  onEditingComplete:
-                                      () => FocusScope.of(context).unfocus(),
-                                ),
-
-                                if (_isInputLoading)
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation(
-                                          navRed,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // 🎙 Only show when keyboard is visible
-                        if (_keyboardIsVisible)
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 8),
-
-                                // 🎙 Mic icon
-                                GestureDetector(
-                                  onTap: () async {
-                                    if (_isRecording) {
-                                      await _stopRecording();
-                                    } else {
-                                      if (await Permission.microphone
-                                          .request()
-                                          .isGranted) {
-                                        await _startRecording();
-                                      } else {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              "Microphone permission denied",
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                                  child: Icon(
-                                    _isRecording ? Icons.stop : Icons.mic,
-                                    size: 36,
-                                    color:
-                                        _isRecording
-                                            ? Colors.red
-                                            : Colors.black,
-                                  ),
-                                ),
-
-                                const SizedBox(width: 4),
-
-                                // 🔊 Waveform or static
-                                SizedBox(
-                                  width: 90,
-                                  height: 50,
-                                  child:
-                                      _isRecording
-                                          ? AudioWaveforms(
-                                            enableGesture: false,
-                                            size: const Size(90, 50),
-                                            recorderController:
-                                                _recorderController,
-                                            waveStyle: const WaveStyle(
-                                              waveColor: Colors.green,
-                                              showMiddleLine: false,
-                                              extendWaveform: true,
-                                              spacing: 4,
-                                              scaleFactor: 60,
-                                            ),
-                                          )
-                                          : _StaticWave(),
-                                ),
-
-                                const Spacer(),
-
-                                // 🗑 Trash
-                                IconButton(
-                                  icon: Image.asset(
-                                    'assets/png24/black/b_garbage.png',
-                                    width: 28,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _inputController.clear();
-                                      _translatedText = '';
-                                      _explain = false;
-                                      _scrollController.jumpTo(0);
-                                    });
-                                  },
-                                ),
-
-                                const SizedBox(width: 8),
-                              ],
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-
-            // 🔁 SWITCHER PANEL
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  GestureDetector(
-                    onTap:
-                        () => setState(
-                          () => _leftLang = _next(_leftLang, _rightLang),
-                        ),
-                    child: Row(
-                      children: [
-                        Image.asset(
-                          _flagPaths[_leftLang]!,
-                          width: 32,
-                          height: 32,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _langLabels[_leftLang]!,
-                          style: GoogleFonts.roboto(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _switchLanguages,
-                    child: Image.asset(
-                      'assets/png24/black/b_change_flat.png',
-                      width: 32,
-                      height: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap:
-                        () => setState(
-                          () => _rightLang = _next(_rightLang, _leftLang),
-                        ),
-                    child: Row(
-                      children: [
-                        Text(
-                          _langLabels[_rightLang]!,
-                          style: GoogleFonts.roboto(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Image.asset(
-                          _flagPaths[_rightLang]!,
-                          width: 32,
-                          height: 32,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-              ),
-            ),
-
-            // 🔳 BOTTOM PANEL
-            if (!_keyboardIsVisible)
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: 10,
+      ), // 👈 prevents overlap with status bar
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: cardWidth,
+          height: MediaQuery.of(context).size.height - 10, // 👈 fills to bottom
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              // 🔲 TOP PANEL
               Expanded(
                 flex: 45,
                 child: Container(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 8,
+                    vertical: 0,
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
@@ -899,141 +700,95 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                       fit: BoxFit.cover,
                     ),
                   ),
-
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(
-                          controller: _scrollController,
-                          child: Text(
-                            _isTranslating
-                                ? _translatingText(_rightLang)
-                                : _translatedText,
-                            style: GoogleFonts.robotoCondensed(
-                              fontSize: dynamicFontSize(_translatedText),
-                              fontWeight: FontWeight.w500,
-                              color:
-                                  _isTranslating ? Colors.grey : Colors.black,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Row(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 0, 5),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
                         children: [
-                          IconButton(
-                            icon: Image.asset(
-                              'assets/png24/black/b_copy.png',
-                              width: 28,
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom: _keyboardIsVisible ? 60 : 0,
                             ),
-                            onPressed: () {
-                              if (_translatedText.isNotEmpty) {
-                                Clipboard.setData(
-                                  ClipboardData(text: _translatedText),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Copied to clipboard'),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: Image.asset(
-                              'assets/png24/black/b_share.png',
-                              width: 28,
-                            ),
-                            onPressed: () {
-                              if (_translatedText.isNotEmpty) {
-                                Share.share(_translatedText);
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: Image.asset(
-                              'assets/png24/black/b_fullscreen.png',
-                              width: 34,
-                            ),
-                            onPressed: () {
-                              if (_translatedText.isNotEmpty) {
-                                showDialog(
-                                  context: context,
-                                  builder:
-                                      (_) => LandscapeZoomModal(
-                                        text: _translatedText,
+                            child: SingleChildScrollView(
+                              child: Stack(
+                                children: [
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      FocusScope.of(
+                                        context,
+                                      ).requestFocus(_inputFocusNode);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
                                       ),
-                                );
-                              }
-                            },
-                          ),
-                          Tooltip(
-                            message:
-                                _explain ? 'Explanation ON' : 'Explanation OFF',
-                            child: IconButton(
-                              icon: Icon(
-                                _explain
-                                    ? Icons.lightbulb
-                                    : Icons.lightbulb_outline,
-                                color: _explain ? Colors.amber : Colors.black54,
-                                size: 32,
-                              ),
-                              onPressed:
-                                  _isTranslating
-                                      ? null
-                                      : () {
-                                        setState(() {
-                                          _explain = true;
-                                          _isTranslating = true;
-                                          _translatedText = '';
-                                        });
-                                        final currentText =
-                                            _inputController.text.trim();
-                                        if (currentText.isNotEmpty) {
-                                          _showLoaderBeforeModal(() async {
-                                            try {
-                                              return await _gemini.translate(
-                                                currentText,
-                                                _langLabels[_leftLang]!,
-                                                _langLabels[_rightLang]!,
-                                                explain: true,
-                                                level: _explanationLevel,
-                                              );
-                                            } catch (e) {
-                                              debugPrint(
-                                                'Explanation error: $e',
-                                              );
-                                              return 'Failed to load explanation.';
-                                            } finally {
-                                              if (mounted) {
-                                                setState(
-                                                  () => _isTranslating = false,
-                                                );
-                                              }
-                                            }
-                                          });
-                                        } else {
-                                          setState(
-                                            () => _isTranslating = false,
-                                          );
-                                        }
-                                      },
-                            ),
-                          ),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () async {
-                              if (_translatedText.isNotEmpty) {
-                                await _speak();
-                              }
-                            },
-                            child:
-                                _isSpeaking
-                                    ? Transform.scale(
-                                      scale: _pulseAnim.value,
-                                      child: const SizedBox(
-                                        width: 34,
-                                        height: 34,
+                                      constraints: const BoxConstraints(
+                                        minHeight: 180,
+                                      ),
+                                      width: double.infinity,
+                                      child: TextField(
+                                        controller: _inputController,
+                                        focusNode: _inputFocusNode,
+                                        maxLines: null,
+                                        style: GoogleFonts.robotoCondensed(
+                                          fontSize:
+                                              dynamicFontSize(
+                                                _inputController.text,
+                                              ) *
+                                              _zoomLevel,
+                                          height:
+                                              1.2, // <-- This increases line spacing
+
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.zero,
+                                          isCollapsed: false,
+                                        ),
+                                        textInputAction: TextInputAction.done,
+                                        onEditingComplete:
+                                            () =>
+                                                FocusScope.of(
+                                                  context,
+                                                ).unfocus(),
+                                      ),
+                                    ),
+                                  ),
+
+                                  // 👇 Dynamic language-based hint overlay
+                                  if (!_inputFocusNode.hasFocus &&
+                                      _inputController.text.trim().isEmpty)
+                                    Positioned(
+                                      top: 12,
+                                      left: 0,
+                                      right: 0,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: IgnorePointer(
+                                          child: Text(
+                                            _placeholderForLang(
+                                              _rightLang,
+                                            ), // ← restored dynamic hint
+                                            style: GoogleFonts.robotoCondensed(
+                                              fontSize: 25 * _zoomLevel,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                  if (_isInputLoading)
+                                    const Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           valueColor: AlwaysStoppedAnimation(
@@ -1041,19 +796,714 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                           ),
                                         ),
                                       ),
-                                    )
-                                    : Image.asset(
-                                      'assets/png24/black/b_speaker.png',
-                                      width: 34,
                                     ),
+                                ],
+                              ),
+                            ),
                           ),
+                          // 📋 Paste Icon – bottom left when keyboard is hidden
+                          if (!_keyboardIsVisible)
+                            Positioned(
+                              bottom: 8,
+                              left: 45,
+                              right: 0,
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      GestureDetector(
+                                        onTap: () async {
+                                          final data = await Clipboard.getData(
+                                            'text/plain',
+                                          );
+                                          if (data?.text != null &&
+                                              data!.text!.trim().isNotEmpty) {
+                                            setState(() {
+                                              final current =
+                                                  _inputController.text.trim();
+                                              final pasted = data.text!.trim();
+                                              final updated =
+                                                  ('$current $pasted').trim();
+                                              _inputController.text = updated;
+                                              _inputController.selection =
+                                                  TextSelection.fromPosition(
+                                                    TextPosition(
+                                                      offset:
+                                                          _inputController
+                                                              .text
+                                                              .length,
+                                                    ),
+                                                  );
+                                            });
+                                          }
+                                        },
+                                        child: Image.asset(
+                                          'assets/images/paste.png',
+                                          width: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      GestureDetector(
+                                        onTap: () async {
+                                          if (_isRecording) {
+                                            await _stopRecording();
+                                          } else {
+                                            if (await Permission.microphone
+                                                .request()
+                                                .isGranted) {
+                                              await _startRecording();
+                                            } else {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    "Microphone permission denied",
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        child: Image.asset(
+                                          _isRecording
+                                              ? 'assets/images/stoprec.png'
+                                              : 'assets/images/microphone-white-border.png',
+                                          width: 28,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      if (_isRecording)
+                                        SizedBox(
+                                          width: 90,
+                                          height: 20,
+                                          child: AudioWaveforms(
+                                            enableGesture: false,
+                                            size: const Size(90, 20),
+                                            recorderController:
+                                                _recorderController,
+                                            waveStyle: const WaveStyle(
+                                              waveColor: navGreen,
+                                              showMiddleLine: false,
+                                              extendWaveform: true,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          // 🎙 Only show when keyboard is visible
+                          if (_keyboardIsVisible)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 0,
+                                  vertical: 6,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // Group ❌ | 📋 | 🎙 with spacing
+                                    Row(
+                                      children: [
+                                        // ❌ Close icon
+                                        GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _inputController.text = '';
+                                              _translatedText = '';
+                                              DocumentTranslationState
+                                                  .inputText = '';
+                                              DocumentTranslationState
+                                                  .translatedText = '';
+                                            });
+                                          },
+                                          child: Image.asset(
+                                            'assets/images/close.png',
+                                            width: 40,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+
+                                        // 📋 Paste icon
+                                        GestureDetector(
+                                          onTap: () async {
+                                            final data =
+                                                await Clipboard.getData(
+                                                  'text/plain',
+                                                );
+                                            if (data?.text != null &&
+                                                data!.text!.trim().isNotEmpty) {
+                                              setState(() {
+                                                final current =
+                                                    _inputController.text
+                                                        .trim();
+                                                final pasted =
+                                                    data.text!.trim();
+                                                final updated =
+                                                    ('$current $pasted').trim();
+                                                _inputController.text = updated;
+                                                _inputController.selection =
+                                                    TextSelection.fromPosition(
+                                                      TextPosition(
+                                                        offset:
+                                                            _inputController
+                                                                .text
+                                                                .length,
+                                                      ),
+                                                    );
+                                              });
+                                            }
+                                          },
+                                          child: Image.asset(
+                                            'assets/images/paste.png',
+                                            width: 28,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+
+                                        // 🎙 Mic icon with waveform
+                                        Row(
+                                          children: [
+                                            GestureDetector(
+                                              onTap: () async {
+                                                if (_isRecording) {
+                                                  await _stopRecording();
+                                                } else {
+                                                  if (await Permission
+                                                      .microphone
+                                                      .request()
+                                                      .isGranted) {
+                                                    await _startRecording();
+                                                  } else {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          "Microphone permission denied",
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                              child: Image.asset(
+                                                _isRecording
+                                                    ? 'assets/images/stoprec.png'
+                                                    : 'assets/images/microphone-white-border.png',
+                                                width: 28,
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 8),
+
+                                            if (_isRecording)
+                                              SizedBox(
+                                                width: 50,
+                                                height: 20,
+                                                child: AudioWaveforms(
+                                                  enableGesture: false,
+                                                  size: const Size(50, 20),
+                                                  recorderController:
+                                                      _recorderController,
+                                                  waveStyle: const WaveStyle(
+                                                    waveColor: navGreen,
+                                                    showMiddleLine: false,
+                                                    extendWaveform: true,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+
+                                    // ✅ Check icon (flush right)
+                                    GestureDetector(
+                                      onTap: () async {
+                                        final input =
+                                            _inputController.text.trim();
+                                        if (input.isEmpty) return;
+
+                                        final detected = await _gemini
+                                            .detectLanguage(input);
+                                        final expected = _rightLang.code;
+
+                                        if (!context.mounted) return;
+
+                                        if (detected != expected) {
+                                          final detectedLang = _langFromCode(
+                                            detected,
+                                          );
+                                          final currentLocale =
+                                              Localizations.localeOf(
+                                                context,
+                                              ).languageCode;
+
+                                          String dialogText;
+                                          switch (currentLocale) {
+                                            case 'de':
+                                              dialogText =
+                                                  'Die erkannte Sprache ist ${detectedLang.label}. Sollen wir deine Einstellung darauf anpassen?';
+                                              break;
+                                            case 'hu':
+                                              dialogText =
+                                                  'A felismerte nyelv: ${detectedLang.label}. Szeretné, hogy ehhez igazítsuk a beállítást?';
+                                              break;
+                                            case 'en':
+                                            default:
+                                              dialogText =
+                                                  'The detected language is ${detectedLang.label}. Should we change your setting to this?';
+                                              break;
+                                          }
+
+                                          showDialog(
+                                            context: context,
+                                            builder: (_) {
+                                              return AlertDialog(
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                content: Text(dialogText),
+                                                actions: [
+                                                  IconButton(
+                                                    icon: Image.asset(
+                                                      'assets/images/close.png',
+                                                      width: 40,
+                                                      color: navRed,
+                                                    ),
+                                                    onPressed:
+                                                        () =>
+                                                            Navigator.of(
+                                                              context,
+                                                            ).pop(),
+                                                  ),
+                                                  IconButton(
+                                                    icon: Image.asset(
+                                                      'assets/images/check.png',
+                                                      width: 28,
+                                                      color: navGreen,
+                                                    ),
+                                                    onPressed: () async {
+                                                      Navigator.of(
+                                                        context,
+                                                      ).pop();
+                                                      WidgetsBinding.instance.addPostFrameCallback((
+                                                        _,
+                                                      ) async {
+                                                        if (mounted) {
+                                                          setState(
+                                                            () =>
+                                                                _rightLang =
+                                                                    detectedLang,
+                                                          );
+
+                                                          // ✅ Save after user confirms
+                                                          try {
+                                                            final inputText =
+                                                                _inputController
+                                                                    .text
+                                                                    .trim();
+                                                            final outputText =
+                                                                _translatedText
+                                                                    .trim();
+                                                            if (inputText
+                                                                    .isNotEmpty &&
+                                                                outputText
+                                                                    .isNotEmpty &&
+                                                                inputText !=
+                                                                    outputText) {
+                                                              final exists = await _db
+                                                                  .translationDao
+                                                                  .findExactMatch(
+                                                                    inputText,
+                                                                    outputText,
+                                                                  );
+                                                              if (exists ==
+                                                                  null) {
+                                                                await _db.translationDao.insertTranslation(
+                                                                  TranslationsCompanion.insert(
+                                                                    input:
+                                                                        inputText,
+                                                                    output:
+                                                                        outputText,
+                                                                    fromLang:
+                                                                        _langLabels[_rightLang]!,
+                                                                    toLang:
+                                                                        _langLabels[_leftLang]!,
+                                                                  ),
+                                                                );
+                                                              } else {
+                                                                debugPrint(
+                                                                  '⚠️ Already saved. Skipping DB insert.',
+                                                                );
+                                                              }
+                                                            }
+                                                          } catch (e) {
+                                                            debugPrint(
+                                                              'DB insert failed: $e',
+                                                            );
+                                                          }
+                                                        }
+                                                      });
+                                                    },
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+                                          return;
+                                        }
+
+                                        // ✅ Save if no correction needed
+                                        FocusScope.of(context).unfocus();
+                                        try {
+                                          final inputText =
+                                              _inputController.text.trim();
+                                          final outputText =
+                                              _translatedText.trim();
+                                          if (inputText.isNotEmpty &&
+                                              outputText.isNotEmpty &&
+                                              inputText != outputText) {
+                                            final exists = await _db
+                                                .translationDao
+                                                .findExactMatch(
+                                                  inputText,
+                                                  outputText,
+                                                );
+                                            if (exists == null) {
+                                              await _db.translationDao
+                                                  .insertTranslation(
+                                                    TranslationsCompanion.insert(
+                                                      input: inputText,
+                                                      output: outputText,
+                                                      fromLang:
+                                                          _langLabels[_rightLang]!,
+                                                      toLang:
+                                                          _langLabels[_leftLang]!,
+                                                    ),
+                                                  );
+                                            } else {
+                                              debugPrint(
+                                                '⚠️ Already saved. Skipping DB insert.',
+                                              );
+                                            }
+                                          }
+                                        } catch (e) {
+                                          debugPrint('DB insert failed: $e');
+                                        }
+                                      },
+                                      child: Image.asset(
+                                        'assets/images/check.png',
+                                        width: 40,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ),
-          ],
+
+              // 🔁 SWITCHER PANEL
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 15,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(
+                      onTap:
+                          () => setState(() {
+                            _rightLang = _next(_rightLang, _leftLang);
+                            final input = _inputController.text.trim();
+                            if (input.isNotEmpty) _translateText(input);
+                          }),
+                      child: Row(
+                        children: [
+                          Text(
+                            _langLabels[_rightLang]!,
+                            style: GoogleFonts.roboto(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Image.asset(
+                            _flagPaths[_rightLang]!,
+                            width: 60,
+                            height: 40,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _switchLanguages,
+                      child: Image.asset(
+                        'assets/png24/black/b_change_flat.png',
+                        width: 60,
+                        height: 40,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap:
+                          () => setState(() {
+                            _leftLang = _next(_leftLang, _rightLang);
+                            final input = _inputController.text.trim();
+                            if (input.isNotEmpty) _translateText(input);
+                          }),
+
+                      child: Row(
+                        children: [
+                          Image.asset(
+                            _flagPaths[_leftLang]!,
+                            width: 60,
+                            height: 40,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _langLabels[_leftLang]!,
+                            style: GoogleFonts.roboto(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                ),
+              ),
+
+              // 🔳 BOTTOM PANEL
+              if (!_keyboardIsVisible)
+                Expanded(
+                  flex: 45,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.black, width: 0.5),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/bg-bright.jpg'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            controller: _scrollController,
+                            child: Text(
+                              _isTranslating
+                                  ? _translatingText(_rightLang)
+                                  : _translatedText,
+                              style: GoogleFonts.robotoCondensed(
+                                fontSize:
+                                    dynamicFontSize(_translatedText) *
+                                    _zoomLevel,
+                                height: 1.2, // <-- This increases line spacing
+                                fontWeight: FontWeight.w500,
+                                color:
+                                    _isTranslating ? Colors.grey : Colors.black,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/png24/black/b_copy.png',
+                                width: 28,
+                              ),
+                              onPressed: () {
+                                if (_translatedText.isNotEmpty) {
+                                  Clipboard.setData(
+                                    ClipboardData(text: _translatedText),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Copied to clipboard'),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/png24/black/b_share.png',
+                                width: 28,
+                              ),
+                              onPressed: () {
+                                if (_translatedText.isNotEmpty) {
+                                  Share.share(_translatedText);
+                                }
+                              },
+                            ),
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/png24/black/b_fullscreen.png',
+                                width: 24,
+                              ),
+                              onPressed: () {
+                                if (_translatedText.isNotEmpty) {
+                                  // 👇 Unfocus the input to prevent cursor from reappearing later
+                                  FocusScope.of(context).unfocus();
+
+                                  showDialog(
+                                    context: context,
+                                    builder:
+                                        (_) => LandscapeZoomModal(
+                                          text: _translatedText,
+                                        ),
+                                  );
+                                }
+                              },
+                            ),
+                            Tooltip(
+                              message: 'Show Explanation',
+                              child: IconButton(
+                                icon: Image.asset(
+                                  'assets/png24/black/b_lightbulb.png', // Make sure this path matches where the image is placed
+                                  width: 28,
+                                  height: 28,
+                                ),
+                                onPressed:
+                                    _isTranslating
+                                        ? null
+                                        : () {
+                                          setState(() {
+                                            _isTranslating = true;
+                                            _translatedText = '';
+                                          });
+
+                                          final currentText =
+                                              _inputController.text.trim();
+                                          if (currentText.isNotEmpty) {
+                                            _showLoaderBeforeModal(() async {
+                                              try {
+                                                return await _gemini.translate(
+                                                  currentText,
+                                                  _langLabels[_leftLang]!,
+                                                  _langLabels[_rightLang]!,
+                                                  explain: true,
+                                                  level: _explanationLevel,
+                                                );
+                                              } catch (e) {
+                                                debugPrint(
+                                                  'Explanation error: $e',
+                                                );
+                                                return 'Failed to load explanation.';
+                                              } finally {
+                                                if (mounted) {
+                                                  setState(
+                                                    () =>
+                                                        _isTranslating = false,
+                                                  );
+                                                }
+                                              }
+                                            });
+                                          } else {
+                                            setState(
+                                              () => _isTranslating = false,
+                                            );
+                                          }
+                                        },
+                              ),
+                            ),
+                            // Corrected: Zoom In
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/images/zoom-plus.png',
+                                width: 26,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _zoomLevel = (_zoomLevel + 0.1).clamp(
+                                    0.5,
+                                    2.0,
+                                  );
+                                });
+                              },
+                            ),
+
+                            // Corrected: Zoom Out
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/images/zoom-minus.png',
+                                width: 26,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _zoomLevel = (_zoomLevel - 0.1).clamp(
+                                    0.5,
+                                    2.0,
+                                  );
+                                });
+                              },
+                            ),
+
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () async {
+                                if (_translatedText.isNotEmpty) {
+                                  await _speak();
+                                }
+                              },
+                              child:
+                                  _isSpeaking
+                                      ? Transform.scale(
+                                        scale: _pulseAnim.value,
+                                        child: const SizedBox(
+                                          width: 34,
+                                          height: 34,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation(
+                                              navRed,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      : Image.asset(
+                                        'assets/png24/black/b_speaker.png',
+                                        width: 24,
+                                      ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1064,7 +1514,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       case Language.hungarian:
         return "Írja be ide a szöveget, vagy illessze be a vágólapról.";
       case Language.german:
-        return "ippe hier den Text oder füge ihn aus der Zwischenablage ein.";
+        return "Hier tippen oder aus Zwischenablage einfügen.";
       default:
         return "Type the text here or paste it from the clipboard.";
     }
@@ -1077,53 +1527,57 @@ class LandscapeZoomModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dialog with transparent background so only our white box shows
+    final width = MediaQuery.of(context).size.height - 40;
+    final height = MediaQuery.of(context).size.width * 0.9;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(20),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Rotated box: portrait device → looks landscape
-          RotatedBox(
-            quarterTurns: 1, // 90° clockwise
-            child: Container(
-              // after rotation, width comes from screen height
-              width: MediaQuery.of(context).size.height - 40,
-              // and height comes from screen width
-              height: MediaQuery.of(context).size.width * 0.9,
+      child: RotatedBox(
+        quarterTurns: 1,
+        child: Stack(
+          children: [
+            Container(
+              width: width,
+              height: height,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
               ),
-              padding: const EdgeInsets.all(16),
               child: SingleChildScrollView(
-                child: Text(
-                  text,
-                  textAlign: TextAlign.start, // left-aligned
-                  style: GoogleFonts.robotoCondensed(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 40, left: 20),
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.start,
+                    style: GoogleFonts.robotoCondensed(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-
-          // A close button that undoes the rotation so it appears upright
-          Positioned(
-            top: 0,
-            right: 0,
-            child: Transform.rotate(
-              angle: -math.pi / 2,
+            // Close button
+            Positioned(
+              bottom: 8, // 👈 bottom of landscape = left in portrait
+              right:
+                  8, // 👈 left side of the rotated box (i.e. bottom-left in portrait)
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+                icon: Image.asset(
+                  'assets/images/close.png',
+                  width: 40,
+                  height: 40,
+                ),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  Navigator.of(context).pop();
+                },
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -36,7 +36,6 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-/// Data Access Object for the translations table.
 @DriftAccessor(tables: [Translations])
 class TranslationDao extends DatabaseAccessor<AppDatabase>
     with _$TranslationDaoMixin {
@@ -58,7 +57,14 @@ class TranslationDao extends DatabaseAccessor<AppDatabase>
     )).write(TranslationsCompanion(isFavorite: Value(isFav)));
 
   /// Deletes the translation row with the given [id].
-  Future<void> deleteEntry(int id) {
-    return (delete(translations)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteEntry(int id) =>
+      (delete(translations)..where((t) => t.id.equals(id))).go();
+
+  /// ✅ Find exact match of input/output
+  Future<Translation?> findExactMatch(String input, String output) {
+    return (select(translations)
+          ..where((t) => t.input.equals(input) & t.output.equals(output))
+          ..limit(1))
+        .getSingleOrNull();
   }
 }

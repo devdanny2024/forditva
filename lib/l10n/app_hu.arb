@@ -14,5 +14,13 @@
   "outputPlaceholder": "A fordítás itt fog megjelenni.",
   "documentMode": "Dokumentum",
   "imageMode": "Kép",
-  "copyToClipboard": "Vágólapra másolás"
+  "copyToClipboard": "Vágólapra másolás",
+  "favorites": "Kedvencek",
+  "searchFavorites": "Keresés a kedvencek között...",
+  "noFavoritesFound": "Nincsenek kedvencek.",
+  "removedFromFavorites": "Eltávolítva a kedvencekből",
+  "history": "Előzmények",
+  "searchHistory": "Előzmények keresése...",
+  "noHistoryFound": "Nincsenek előzmények.",
+  "delete": "Törlés"
 }

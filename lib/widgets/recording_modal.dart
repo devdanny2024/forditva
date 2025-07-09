@@ -156,7 +156,7 @@ class _RecordingModalState extends State<RecordingModal> {
       if (!_switchingToContinuous) {
         // User did NOT switch to continuous: just return this transcript
         widget.onTranscribed(_sttTranscript);
-        if (mounted) Navigator.of(context).pop();
+        if (widget.onCancel != null) widget.onCancel!();
       }
       // If switchingToContinuous, wait for audio part to finish
     } else {
@@ -166,7 +166,7 @@ class _RecordingModalState extends State<RecordingModal> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Please make a recording")),
         );
-        Navigator.of(context).pop();
+        if (widget.onCancel != null) widget.onCancel!();
       }
     }
   }
@@ -231,7 +231,7 @@ class _RecordingModalState extends State<RecordingModal> {
     }
 
     // Close the modal regardless
-    if (mounted) Navigator.of(context).pop();
+    if (widget.onCancel != null) widget.onCancel!();
   }
 
   Future<String> _transcribeAudio(File audioFile, Language lang) async {
@@ -284,24 +284,6 @@ class _RecordingModalState extends State<RecordingModal> {
         ),
         child: Stack(
           children: [
-            // Close (X) button at top right
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                onTap: () {
-                  // Always call onTranscribed with empty, as per your modal logic
-                  widget.onTranscribed('');
-                  Navigator.of(context).pop();
-                },
-                child: Image.asset(
-                  'assets/images/close.png',
-                  width: 28,
-                  height: 28,
-                ),
-              ),
-            ),
-
             Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,

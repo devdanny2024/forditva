@@ -14,5 +14,13 @@
   "outputPlaceholder": "Die Übersetzung erscheint hier.",
   "documentMode": "Dokument",
   "imageMode": "Bild",
-  "copyToClipboard": "In die Zwischenablage kopieren"
+  "copyToClipboard": "In die Zwischenablage kopieren",
+  "favorites": "Favoriten",
+  "searchFavorites": "Favoriten durchsuchen...",
+  "noFavoritesFound": "Keine Favoriten gefunden.",
+  "removedFromFavorites": "Aus den Favoriten entfernt",
+  "history": "Verlauf",
+  "searchHistory": "Verlauf durchsuchen...",
+  "noHistoryFound": "Kein Verlauf gefunden.",
+  "delete": "Löschen"
 }

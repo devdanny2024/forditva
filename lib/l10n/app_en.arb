@@ -14,5 +14,13 @@
   "outputPlaceholder": "Translation will appear here.",
   "documentMode": "Document",
   "imageMode": "Image",
-  "copyToClipboard": "Copy to clipboard"
+  "copyToClipboard": "Copy to clipboard",
+  "favorites": "Favorites",
+  "searchFavorites": "Search favorites...",
+  "noFavoritesFound": "No favorites found.",
+  "removedFromFavorites": "Removed from favorites",
+  "history": "History",
+  "searchHistory": "Search history...",
+  "noHistoryFound": "No history found.",
+  "delete": "Delete"
 }

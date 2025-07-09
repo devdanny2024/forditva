@@ -11,6 +11,7 @@ import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
@@ -40,8 +41,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   // Split/drag state
   double _splitRatio = 0.5;
   static const double _dividerH = 10.0;
-  static const double _minTopPanel = 400.0;
-  static const double _minBotPanel = 100.0;
+  double _zoomLevel = 1.0; // Default zoom factor (1x)
+
   final GeminiTranslator _gemini =
       GeminiTranslator(); // Already used in your other pages
 
@@ -58,17 +59,24 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     return false;
   }
 
+  Future<void> _saveState(File imageFile, String resultText) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('lastImagePath', imageFile.path);
+    prefs.setString('lastResultText', resultText);
+  }
+
   // Flag/image and label maps
   final Map<Language, String> _flagPaths = {
     Language.en: 'assets/flags/EN_BW_LS.png',
     Language.de: 'assets/flags/DE_BW_LS.png',
     Language.hu: 'assets/flags/HU_BW_LS.png',
   };
-  final Map<Language, String> _langLabels = {
-    Language.en: 'EN',
-    Language.de: 'DE',
-    Language.hu: 'HU',
+  final Map<Language, String> _labelPaths = {
+    Language.en: 'assets/images/EN-EN.png',
+    Language.de: 'assets/images/DE-DE.png',
+    Language.hu: 'assets/images/HU-HU.png',
   };
+
   String stripHtmlCodeFence(String input) {
     // Remove leading ```html or ```HTML and trailing ```
     final regex = RegExp(
@@ -124,6 +132,21 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _loadState();
+  }
+
+  Future<void> _loadState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final path = prefs.getString('lastImagePath');
+    final result = prefs.getString('lastResultText');
+
+    if (path != null && File(path).existsSync()) {
+      setState(() {
+        _imageFile = File(path);
+        _croppedImageFile = null; // you could cache cropped version too
+        _resultText = result ?? '';
+      });
+    }
   }
 
   @override
@@ -218,7 +241,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     Text(
                       orig,
                       style: GoogleFonts.robotoCondensed(
-                        fontSize: 24.0, // or any fixed size you prefer
+                        fontSize: 24.0 * _zoomLevel,
                         fontWeight: FontWeight.w500,
                         color: navRed,
                       ),
@@ -229,7 +252,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       child: Text(
                         trans,
                         style: GoogleFonts.robotoCondensed(
-                          fontSize: 24.0, // or any fixed size you prefer
+                          fontSize: 24.0 * _zoomLevel,
                           fontWeight: FontWeight.w500,
                           color: navGreen,
                         ),
@@ -294,7 +317,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     Text(
                       orig,
                       style: GoogleFonts.robotoCondensed(
-                        fontSize: calculateFontSizes(orig, panelH) * 0.5,
+                        fontSize: calculateFontSizes(orig, panelH) * _zoomLevel,
                         fontWeight: FontWeight.bold,
                         color: navRed,
                       ),
@@ -305,7 +328,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       child: Text(
                         trans,
                         style: GoogleFonts.robotoCondensed(
-                          fontSize: calculateFontSizes(trans, panelH),
+                          fontSize:
+                              calculateFontSizes(trans, panelH) * _zoomLevel,
                           fontWeight: FontWeight.w500,
                           color: navGreen,
                         ),
@@ -323,6 +347,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       _isProcessing = true;
       _resultText = '';
     });
+    await _saveState(_croppedImageFile ?? _imageFile!, _resultText);
 
     try {
       final out = await _chat.processImage(
@@ -367,14 +392,50 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             context: context,
             builder:
                 (context) => AlertDialog(
-                  title: const Text("Language Mismatch"),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   content: Text(
-                    "The detected language is $detected, but your selected input language is ${langCodes[_rightLang]}. Please change the language or select a correct image.",
+                    "Detected language is $detected but your selected input is ${langCodes[_rightLang]}.",
+                  ),
+                  actionsPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
                   actions: [
-                    TextButton(
+                    // ❌ CLOSE
+                    IconButton(
+                      icon: Image.asset(
+                        'assets/images/close.png',
+                        width: 28,
+                        height: 28,
+                        color: navRed,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text("OK"),
+                    ),
+                    // ✅ CHECK = apply detected language
+                    IconButton(
+                      icon: Image.asset(
+                        'assets/images/check.png',
+                        width: 28,
+                        height: 28,
+                        color: navGreen,
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          setState(() {
+                            _rightLang =
+                                langCodes.entries
+                                    .firstWhere((e) => e.value == detected)
+                                    .key;
+                          });
+                          if (_imageFile != null) {
+                            _processImage(imageFile: _imageFile!);
+                          }
+                        });
+                      },
                     ),
                   ],
                 ),
@@ -387,7 +448,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         return;
       }
 
-      setState(() => _resultText = out.trim());
+      final cleaned = out.trim();
+      setState(() => _resultText = cleaned);
+      await _saveState(_croppedImageFile ?? _imageFile!, cleaned);
+      if (cleaned.isNotEmpty && !cleaned.startsWith("Error:")) {
+        await _saveState(_croppedImageFile ?? _imageFile!, cleaned);
+      }
 
       if (_imageIsUnclear(out)) {
         showDialog(
@@ -431,6 +497,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         _imageFile = file;
         _croppedImageFile = cropped;
       });
+
       await _processImage(imageFile: cropped ?? file);
     }
   }
@@ -452,6 +519,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         _imageFile = file;
         _croppedImageFile = cropped;
       });
+
       await _processImage(imageFile: cropped ?? file);
     }
   }
@@ -467,8 +535,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     const double switchSize = 50;
 
     return Container(
-      color: textGrey,
-      padding: const EdgeInsets.only(top: 30),
+      color: Colors.white,
+      padding: const EdgeInsets.only(top: 30, left: 16, right: 16),
       child: Column(
         children: [
           // ─── Top & Bottom panels separated by draggable divider ───
@@ -492,135 +560,143 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                 return Column(
                   children: [
                     // ─── Top panel ──────────────────────────────
-                    SizedBox(
-                      width: boxW,
-                      height: topH,
-                      child: Stack(
-                        children: [
-                          // White rounded box with image or placeholder
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Colors.black,
-                                  width: 2,
+                    Center(
+                      child: SizedBox(
+                        width: boxW,
+                        height: topH,
+                        child: Stack(
+                          children: [
+                            // White rounded box with image or placeholder
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(
+                                    color: Colors.black,
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child:
-                                  (_croppedImageFile ?? _imageFile) != null
-                                      ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: LayoutBuilder(
-                                          builder: (context, constraints) {
-                                            return InteractiveViewer(
-                                              panEnabled: true,
-                                              boundaryMargin:
-                                                  const EdgeInsets.all(100),
-                                              clipBehavior: Clip.none,
-                                              minScale: 0.5,
-                                              maxScale: 5.0,
-                                              constrained: true,
-                                              child: SizedBox(
-                                                width: constraints.maxWidth,
-                                                height: constraints.maxHeight,
-                                                child: Image.file(
-                                                  _croppedImageFile ??
-                                                      _imageFile!,
-                                                  fit:
-                                                      BoxFit
-                                                          .contain, // this ensures it’s zoomed out by default
+                                child:
+                                    (_croppedImageFile ?? _imageFile) != null
+                                        ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              return InteractiveViewer(
+                                                panEnabled: true,
+                                                boundaryMargin:
+                                                    const EdgeInsets.all(100),
+                                                clipBehavior: Clip.none,
+                                                minScale: 0.5,
+                                                maxScale: 5.0,
+                                                constrained: true,
+                                                child: SizedBox(
+                                                  width: constraints.maxWidth,
+                                                  height: constraints.maxHeight,
+                                                  child: Image.file(
+                                                    _croppedImageFile ??
+                                                        _imageFile!,
+                                                    fit:
+                                                        BoxFit
+                                                            .contain, // this ensures it’s zoomed out by default
+                                                  ),
                                                 ),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                        : /* ... your placeholder content here ... */ Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            GestureDetector(
+                                              onTap: _takePhoto,
+                                              child: const Icon(
+                                                Icons.camera_alt,
+                                                size: 80,
+                                                color: navRed,
                                               ),
-                                            );
-                                          },
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 2.0,
+                                                  ),
+                                              child: Text.rich(
+                                                TextSpan(
+                                                  style:
+                                                      GoogleFonts.robotoCondensed(
+                                                        fontSize: 20,
+                                                        color: navRed,
+                                                      ),
+                                                  children: [
+                                                    const TextSpan(
+                                                      text:
+                                                          'CLICK TO TAKE A PHOTO OR\n',
+                                                    ),
+                                                    TextSpan(
+                                                      text: 'LOAD UP FROM',
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        decoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                      ),
+                                                      recognizer:
+                                                          TapGestureRecognizer()
+                                                            ..onTap =
+                                                                _pickFromGallery,
+                                                    ),
+                                                    const TextSpan(
+                                                      text: ' YOUR DEVICE.',
+                                                    ),
+                                                  ],
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      )
-                                      : /* ... your placeholder content here ... */ Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          GestureDetector(
-                                            onTap: _takePhoto,
-                                            child: const Icon(
-                                              Icons.camera_alt,
-                                              size: 80,
-                                              color: navRed,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 2.0,
-                                            ),
-                                            child: Text.rich(
-                                              TextSpan(
-                                                style:
-                                                    GoogleFonts.robotoCondensed(
-                                                      fontSize: 20,
-                                                      color: navRed,
-                                                    ),
-                                                children: [
-                                                  const TextSpan(
-                                                    text:
-                                                        'CLICK TO TAKE A PHOTO OR\n',
-                                                  ),
-                                                  TextSpan(
-                                                    text: 'LOAD UP FROM',
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      decoration:
-                                                          TextDecoration
-                                                              .underline,
-                                                    ),
-                                                    recognizer:
-                                                        TapGestureRecognizer()
-                                                          ..onTap =
-                                                              _pickFromGallery,
-                                                  ),
-                                                  const TextSpan(
-                                                    text: ' YOUR DEVICE.',
-                                                  ),
-                                                ],
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                            ),
-                          ),
-                          // New "Close" (X) button at bottom left when there's an image
-                          if ((_croppedImageFile ?? _imageFile) != null)
-                            Positioned(
-                              bottom: 8,
-                              left: 8,
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _imageFile = null;
-                                    _croppedImageFile = null;
-                                    _resultText = '';
-                                    _isProcessing = false;
-                                    _laActive = false;
-                                    _interpretMode = false;
-                                    _splitRatio =
-                                        0.5; // reset to balanced position if you want
-                                  });
-                                },
-                                child: Image.asset(
-                                  'assets/images/close.png',
-                                  width: 32,
-                                  height: 32,
-                                ),
                               ),
                             ),
-                        ],
+                            // New "Close" (X) button at bottom left when there's an image
+                            if ((_croppedImageFile ?? _imageFile) != null)
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
+                                    await prefs.remove('lastImagePath');
+                                    await prefs.remove('lastResultText');
+
+                                    setState(() {
+                                      _imageFile = null;
+                                      _croppedImageFile = null;
+                                      _resultText = '';
+                                      _isProcessing = false;
+                                      _laActive = false;
+                                      _interpretMode = false;
+                                      _splitRatio = 0.5;
+                                    });
+                                  },
+                                  child: Image.asset(
+                                    'assets/images/close.png',
+                                    width: 32,
+                                    height: 32,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-
                     // ─── Draggable divider ────────────────────
                     GestureDetector(
                       behavior: HitTestBehavior.translucent,
@@ -749,9 +825,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                 "body": Style(
                                                   fontSize: FontSize(
                                                     calculateFontSizes(
-                                                      res,
-                                                      panelH,
-                                                    ),
+                                                          res,
+                                                          panelH,
+                                                        ) *
+                                                        _zoomLevel,
                                                   ),
                                                   fontFamily:
                                                       GoogleFonts.robotoCondensed()
@@ -768,7 +845,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                         calculateFontSizes(
                                                           res,
                                                           panelH,
-                                                        ),
+                                                        ) *
+                                                        _zoomLevel,
                                                   ),
                                             );
                                           }
@@ -836,6 +914,44 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                         size: iconSize,
                                       ),
                                     ),
+                                    SizedBox(width: iconSize * 0.5),
+
+                                    // Zoom Out Button
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _zoomLevel = (_zoomLevel - 0.1).clamp(
+                                            0.5,
+                                            2.0,
+                                          );
+                                        });
+                                      },
+                                      child: Image.asset(
+                                        'assets/images/zoom-minus.png', // ✅ Make sure this path is correct
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+
+                                    SizedBox(width: iconSize * 0.5),
+
+                                    // Zoom In Button
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _zoomLevel = (_zoomLevel + 0.1).clamp(
+                                            0.5,
+                                            2.0,
+                                          );
+                                        });
+                                      },
+                                      child: Image.asset(
+                                        'assets/images/zoom-plus.png', // ✅ Make sure this path is correct
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+
                                     SizedBox(width: iconSize * 0.5),
                                     GestureDetector(
                                       onTap:
@@ -908,14 +1024,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       }),
                   child: Row(
                     children: [
-                      Text(
-                        _langLabels[_rightLang]!,
-                        style: GoogleFonts.roboto(
-                          fontSize: 35,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                        ),
-                      ),
+                      Image.asset(_labelPaths[_rightLang]!, height: 32),
                       const SizedBox(width: 8),
                       Image.asset(
                         _flagPaths[_rightLang]!,
@@ -951,14 +1060,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         height: flagSize,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        _langLabels[_leftLang]!,
-                        style: GoogleFonts.roboto(
-                          fontSize: 35,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                        ),
-                      ),
+                      Image.asset(_labelPaths[_leftLang]!, height: 32),
                     ],
                   ),
                 ),
