@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:forditva/document/document_language_state.dart';
 import 'package:forditva/document/translationstate.dart';
 import 'package:forditva/widgets/splash_screen.dart'; // Adjust path!
@@ -10,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'document/document_translation_page.dart';
 import 'favorite.dart';
+import 'flutter_gen/gen_l10n/app_localizations.dart';
 import 'help_support_page.dart';
 import 'history.dart';
 import 'image_page.dart';
@@ -64,14 +64,22 @@ class _MyAppState extends State<MyApp> {
       valueListenable: _localeNotifier,
       builder: (context, locale, _) {
         return MaterialApp(
+          // <-- INSIDE THIS WIDGET
           locale: locale,
           debugShowCheckedModeBanner: false,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           title: 'Forditva',
           theme: ThemeData(primarySwatch: Colors.green),
-          // 👇 SPLASH IS HOME NOW
-          home: SplashScreenWithLocaleSetter(onLocaleChanged: setLocale),
+
+          // ✅ ADD THESE LINES
+          initialRoute: '/',
+          routes: {
+            '/':
+                (context) =>
+                    SplashScreenWithLocaleSetter(onLocaleChanged: setLocale),
+            '/home': (context) => MainScreen(onLocaleChanged: setLocale),
+          },
         );
       },
     );
@@ -163,6 +171,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const double navBarHeight = 56.0;
+    final double iconSize = navBarHeight * 0.5; // 60% of nav-bar height
     return Scaffold(
       drawer: Drawer(
         child: ListView(
@@ -214,19 +224,15 @@ class _MainScreenState extends State<MainScreen> {
         context: context,
         removeTop: true,
         child: Padding(
-          padding: const EdgeInsets.only(top: 20), // ← adjust as needed
+          // keep your top padding of 20, but only reserve
+          // the exact nav height (56) at the bottom
+          padding: const EdgeInsets.fromLTRB(0, 20, 0, 0),
           child: _pages[_currentPage],
         ),
       ),
 
       bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          16,
-          0,
-          16,
-          20,
-        ), // 👈 16 left/right, 20 bottom
-
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
         child: ClipRRect(
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(32),
@@ -234,184 +240,185 @@ class _MainScreenState extends State<MainScreen> {
             bottomLeft: Radius.circular(32),
             bottomRight: Radius.circular(32),
           ),
-          child: Container(
-            child: SizedBox(
-              height: 56,
-              child: Stack(
-                children: [
-                  Positioned(
-                    left: 0,
-                    right: 20,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(color: navRed),
-                  ),
-                  Positioned(
-                    left: 20,
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(color: navGreen),
-                  ),
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 16.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          border: Border(
-                            top: BorderSide(color: Colors.black, width: 1),
-                            bottom: BorderSide(color: Colors.black, width: 1),
+          child: SizedBox(
+            height: navBarHeight,
+            child: Stack(
+              children: [
+                // red half
+                Positioned(
+                  left: 0,
+                  right: 20,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(color: navRed),
+                ),
+                // green half
+                Positioned(
+                  left: 20,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(color: navGreen),
+                ),
+                // icons & label
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 16.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        border: Border(
+                          top: BorderSide(color: Colors.black, width: 1),
+                          bottom: BorderSide(color: Colors.black, width: 1),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // menu
+                          Flexible(
+                            flex: 1,
+                            child: Builder(
+                              builder:
+                                  (ctx) => GestureDetector(
+                                    onTap: () => Scaffold.of(ctx).openDrawer(),
+                                    child: Container(
+                                      color: navRed,
+                                      alignment: Alignment.center,
+                                      child: Image.asset(
+                                        'assets/png24/white/w_menu.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                        color: Colors.white,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                  ),
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              flex: 1,
-                              child: Builder(
-                                builder:
-                                    (ctx) => GestureDetector(
-                                      onTap:
-                                          () => Scaffold.of(ctx).openDrawer(),
-                                      child: Container(
-                                        color: navRed,
-                                        alignment: Alignment.center,
-                                        child: Image.asset(
-                                          'assets/png24/white/w_menu.png',
-                                          width: 35,
-                                          height: 35,
-                                          color: Colors.white,
-                                          colorBlendMode: BlendMode.srcIn,
-                                        ),
-                                      ),
-                                    ),
-                              ),
-                            ),
-                            Flexible(
-                              flex: 1,
-                              child: GestureDetector(
-                                onTap:
-                                    () => setState(() {
-                                      if (_currentPage == 1)
-                                        _currentPage = 5;
-                                      else if (_currentPage == 5)
-                                        _currentPage = 6;
-                                      else
-                                        _currentPage = 1;
-                                    }),
-                                child: Container(
-                                  color: navRed,
-                                  alignment: Alignment.center,
-                                  child: Image.asset(
-                                    _currentPage == 1
-                                        ? 'assets/png24/white/w_conversation.png'
-                                        : _currentPage == 5
-                                        ? 'assets/png24/white/w_document.png'
-                                        : 'assets/png24/white/w_explain_image.png',
-                                    width: 35,
-                                    height: 35,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Flexible(
-                              flex: 3,
-                              child: GestureDetector(
-                                onTap:
-                                    () => setState(() {
-                                      if (_currentPage == 1)
-                                        _currentPage = 5;
-                                      else if (_currentPage == 5)
-                                        _currentPage = 6;
-                                      else
-                                        _currentPage = 1;
-                                    }),
-                                child: Container(
-                                  color: Colors.white,
-                                  alignment: Alignment.center,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8.0,
-                                      ), // 👈 Add spacing
-                                      child: Text(
-                                        _getPageName(_currentPage),
-                                        maxLines: 1,
-                                        style: GoogleFonts.robotoCondensed(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 18, // 👈 Smaller text size
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Flexible(
-                              flex: 3,
+
+                          // conversation / document / image toggle
+                          Flexible(
+                            flex: 1,
+                            child: GestureDetector(
+                              onTap:
+                                  () => setState(() {
+                                    if (_currentPage == 1)
+                                      _currentPage = 5;
+                                    else if (_currentPage == 5)
+                                      _currentPage = 6;
+                                    else
+                                      _currentPage = 1;
+                                  }),
                               child: Container(
-                                color: navGreen,
+                                color: navRed,
                                 alignment: Alignment.center,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: 10,
-                                  ), // padding at right edge
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment
-                                            .spaceEvenly, // even spacing
-                                    children: [
-                                      GestureDetector(
-                                        onTap:
-                                            () => setState(
-                                              () => _currentPage = 2,
-                                            ),
-                                        child: Image.asset(
-                                          'assets/png24/white/w_learninglist.png',
-                                          width: 35,
-                                          height: 35,
-                                          colorBlendMode: BlendMode.srcIn,
-                                        ),
+                                child: Image.asset(
+                                  _currentPage == 1
+                                      ? 'assets/png24/white/w_conversation.png'
+                                      : _currentPage == 5
+                                      ? 'assets/png24/white/w_document.png'
+                                      : 'assets/png24/white/w_explain_image.png',
+                                  width: iconSize,
+                                  height: iconSize,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // page title
+                          Flexible(
+                            flex: 3,
+                            child: GestureDetector(
+                              onTap:
+                                  () => setState(() {
+                                    if (_currentPage == 1)
+                                      _currentPage = 5;
+                                    else if (_currentPage == 5)
+                                      _currentPage = 6;
+                                    else
+                                      _currentPage = 1;
+                                  }),
+                              child: Container(
+                                color: Colors.white,
+                                alignment: Alignment.center,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8.0,
+                                    ),
+                                    child: Text(
+                                      _getPageName(_currentPage),
+                                      maxLines: 1,
+                                      style: GoogleFonts.robotoCondensed(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 18,
+                                        color: Colors.black,
                                       ),
-                                      GestureDetector(
-                                        onTap:
-                                            () => setState(
-                                              () => _currentPage = 3,
-                                            ),
-                                        child: Image.asset(
-                                          'assets/png24/white/w_favorit.png',
-                                          width: 35,
-                                          height: 35,
-                                          colorBlendMode: BlendMode.srcIn,
-                                        ),
-                                      ),
-                                      GestureDetector(
-                                        onTap:
-                                            () => setState(
-                                              () => _currentPage = 4,
-                                            ),
-                                        child: Image.asset(
-                                          'assets/png24/white/w_history.png',
-                                          width: 35,
-                                          height: 35,
-                                          colorBlendMode: BlendMode.srcIn,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+
+                          // learning / favorite / history
+                          Flexible(
+                            flex: 3,
+                            child: Container(
+                              color: navGreen,
+                              alignment: Alignment.center,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 2),
+                                      child: Image.asset(
+                                        'assets/png24/white/w_learninglist.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 3),
+                                      child: Image.asset(
+                                        'assets/png24/white/w_favorit.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                    GestureDetector(
+                                      onTap:
+                                          () =>
+                                              setState(() => _currentPage = 4),
+                                      child: Image.asset(
+                                        'assets/png24/white/w_history.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

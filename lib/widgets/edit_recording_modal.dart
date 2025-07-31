@@ -150,10 +150,10 @@ class _EditTextModalState extends State<EditTextModal> {
         _isRecording = false;
         _isSttLoading = false;
       });
-      if (transcript != null && transcript.trim().isNotEmpty) {
-        // Concatenate transcript to edit field
+      if ((transcript?.trim().isNotEmpty ?? false)) {
         widget.controller.text =
-            ('${widget.controller.text.trim()} ${transcript.trim()}').trim();
+            ('${widget.controller.text.trim()} ${transcript?.trim() ?? ""}')
+                .trim();
 
         // Force cursor to end of field (nice UX)
         // This is handled by the listener, but an explicit call here after text change is also fine

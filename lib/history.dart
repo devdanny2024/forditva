@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:forditva/db/database.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+import 'flutter_gen/gen_l10n/app_localizations.dart';
 
 const Color textGrey = Color(0xFF898888);
 const Color navGreen = Color(0xFF436F4D);

@@ -396,7 +396,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   content: Text(
-                    "Detected language is $detected but your selected input is ${langCodes[_rightLang]}.",
+                    "Detected language is $detected but your selected input is ${langCodes[_rightLang]}. Would you like to switch the input language?",
                   ),
                   actionsPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -533,7 +533,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     const double switcherH = 55;
     const double flagSize = 50;
     const double switchSize = 50;
-
+    final screenWidth = MediaQuery.of(context).size.width;
+    final double iconSize = (screenWidth * 0.085).clamp(24.0, 48.0);
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.only(top: 30, left: 16, right: 16),
@@ -688,11 +689,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   },
                                   child: Image.asset(
                                     'assets/images/close.png',
-                                    width: 32,
-                                    height: 32,
+                                    width: iconSize,
+                                    height: iconSize,
                                   ),
                                 ),
                               ),
+                              
                           ],
                         ),
                       ),
@@ -702,8 +704,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       behavior: HitTestBehavior.translucent,
                       onPanUpdate:
                           (d) => setState(() {
-                            // Calculate new top height by adding the drag delta
-                            final newTop = (topH + d.delta.dy).clamp(
+                            // Compute the *current* top from your state-backed _splitRatio:
+                            final currentTop = _splitRatio * usable;
+                            final newTop = (currentTop + d.delta.dy).clamp(
                               minPanel,
                               usable - minPanel,
                             );
@@ -732,7 +735,6 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         builder: (ctx2, panelConstraints) {
                           final panelH = panelConstraints.maxHeight;
                           final panelW = panelConstraints.maxWidth;
-                          const double iconSize = 32.0;
                           const iconRowH = 48.0;
                           final availH = panelH - iconRowH - 16;
 
@@ -1016,12 +1018,19 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
               children: [
                 // Right (input language, flag at bottom right, tap cycles)
                 GestureDetector(
-                  onTap:
-                      () => setState(() {
-                        _rightLang = _next(_rightLang, _leftLang);
-                        if (_imageFile != null)
-                          _processImage(imageFile: _imageFile!);
-                      }),
+                  onTap: () {
+                    setState(() {
+                      _rightLang = _next(_rightLang, _leftLang);
+
+                      // clear old output
+                      _resultText = '';
+                      _isProcessing = false;
+                      _laActive = false;
+                      _zoomLevel = 1.0;
+                    });
+                    if (_imageFile != null)
+                      _processImage(imageFile: _imageFile!);
+                  },
                   child: Row(
                     children: [
                       Image.asset(_labelPaths[_rightLang]!, height: 32),
@@ -1037,7 +1046,25 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                 const SizedBox(width: 25),
                 // Swap button
                 GestureDetector(
-                  onTap: _switchLanguages,
+                  onTap: () {
+                    setState(() {
+                      // swap
+                      final tmp = _leftLang;
+                      _leftLang = _rightLang;
+                      _rightLang = tmp;
+
+                      // clear old output
+                      _resultText = '';
+                      _isProcessing = false;
+                      _laActive = false;
+                      _zoomLevel = 1.0;
+                    });
+
+                    // re-run if we have an image
+                    if (_imageFile != null) {
+                      _processImage(imageFile: _imageFile!);
+                    }
+                  },
                   child: Image.asset(
                     'assets/png24/black/b_change_flat.png',
                     width: switchSize,
@@ -1046,12 +1073,20 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                 const SizedBox(width: 25),
                 // Left (output language, flag at top left, tap cycles)
                 GestureDetector(
-                  onTap:
-                      () => setState(() {
-                        _leftLang = _next(_leftLang, _rightLang);
-                        if (_imageFile != null)
-                          _processImage(imageFile: _imageFile!);
-                      }),
+                  onTap: () {
+                    setState(() {
+                      _leftLang = _next(_leftLang, _rightLang);
+
+                      // clear old output
+                      _resultText = '';
+                      _isProcessing = false;
+                      _laActive = false;
+                      _zoomLevel = 1.0;
+                    });
+                    if (_imageFile != null)
+                      _processImage(imageFile: _imageFile!);
+                  },
+
                   child: Row(
                     children: [
                       Image.asset(

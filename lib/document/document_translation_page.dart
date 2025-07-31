@@ -665,10 +665,16 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     final double cardHeight = media.size.height * 0.8;
     String inputText = _inputController.text;
     String outText = _translatedText;
-
+    // 1) compute iconSize once at the top of your build:
+    final screenWidth = MediaQuery.of(context).size.width;
+    // ~9.5% of screen width → ~34 dp on a 360 dp screen. Clamp so it never gets too small/large.
+    final double iconSize = (screenWidth * 0.085).clamp(24.0, 48.0);
     double inputFontSize = dynamicFontSize(inputText);
     double outputFontSize = dynamicFontSize(outText);
-
+    final double bottomReserve =
+        _keyboardIsVisible
+            ? 60.0
+            : iconSize + 16.0; // iconSize + some extra margin
     return Padding(
       padding: const EdgeInsets.only(
         top: 10,
@@ -706,9 +712,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                       return Stack(
                         children: [
                           Padding(
-                            padding: EdgeInsets.only(
-                              bottom: _keyboardIsVisible ? 60 : 0,
-                            ),
+                            padding: EdgeInsets.only(bottom: bottomReserve),
                             child: SingleChildScrollView(
                               child: Stack(
                                 children: [
@@ -841,7 +845,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                         },
                                         child: Image.asset(
                                           'assets/images/paste.png',
-                                          width: 28,
+                                          width: iconSize,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -871,7 +875,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                           _isRecording
                                               ? 'assets/images/stoprec.png'
                                               : 'assets/images/microphone-white-border.png',
-                                          width: 28,
+                                          width: iconSize,
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -928,7 +932,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                           },
                                           child: Image.asset(
                                             'assets/images/close.png',
-                                            width: 40,
+                                            width: iconSize,
                                           ),
                                         ),
                                         const SizedBox(width: 10),
@@ -965,7 +969,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                           },
                                           child: Image.asset(
                                             'assets/images/paste.png',
-                                            width: 28,
+                                            width: iconSize,
                                           ),
                                         ),
                                         const SizedBox(width: 10),
@@ -1000,7 +1004,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                                 _isRecording
                                                     ? 'assets/images/stoprec.png'
                                                     : 'assets/images/microphone-white-border.png',
-                                                width: 28,
+                                                width: iconSize,
                                               ),
                                             ),
 
@@ -1079,7 +1083,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                                   IconButton(
                                                     icon: Image.asset(
                                                       'assets/images/close.png',
-                                                      width: 40,
+                                                      width: iconSize,
                                                       color: navRed,
                                                     ),
                                                     onPressed:
@@ -1091,7 +1095,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                                   IconButton(
                                                     icon: Image.asset(
                                                       'assets/images/check.png',
-                                                      width: 28,
+                                                      width: iconSize,
                                                       color: navGreen,
                                                     ),
                                                     onPressed: () async {
@@ -1205,7 +1209,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                       },
                                       child: Image.asset(
                                         'assets/images/check.png',
-                                        width: 40,
+                                        width: iconSize,
                                       ),
                                     ),
                                   ],
@@ -1227,6 +1231,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                   vertical: 15,
                 ),
                 child: Row(
+                  mainAxisSize:
+                      MainAxisSize
+                          .min, // only take as much width as the children
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     GestureDetector(
@@ -1290,7 +1297,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
                   ],
                 ),
               ),
@@ -1317,30 +1323,36 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                     child: Column(
                       children: [
                         Expanded(
-                          child: SingleChildScrollView(
-                            controller: _scrollController,
-                            child: Text(
+                          child:
                               _isTranslating
-                                  ? _translatingText(_rightLang)
-                                  : _translatedText,
-                              style: GoogleFonts.robotoCondensed(
-                                fontSize:
-                                    dynamicFontSize(_translatedText) *
-                                    _zoomLevel,
-                                height: 1.2, // <-- This increases line spacing
-                                fontWeight: FontWeight.w500,
-                                color:
-                                    _isTranslating ? Colors.grey : Colors.black,
-                              ),
-                            ),
-                          ),
+                                  ? Center(
+                                    child: Image.asset(
+                                      'assets/images/loader.gif',
+                                      width: 80,
+                                      height: 80,
+                                    ),
+                                  )
+                                  : SingleChildScrollView(
+                                    controller: _scrollController,
+                                    child: Text(
+                                      _translatedText,
+                                      style: GoogleFonts.robotoCondensed(
+                                        fontSize:
+                                            dynamicFontSize(_translatedText) *
+                                            _zoomLevel,
+                                        height: 1.2,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                  ),
                         ),
                         Row(
                           children: [
                             IconButton(
                               icon: Image.asset(
                                 'assets/png24/black/b_copy.png',
-                                width: 28,
+                                width: iconSize,
                               ),
                               onPressed: () {
                                 if (_translatedText.isNotEmpty) {
@@ -1358,7 +1370,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                             IconButton(
                               icon: Image.asset(
                                 'assets/png24/black/b_share.png',
-                                width: 28,
+                                width: 40,
                               ),
                               onPressed: () {
                                 if (_translatedText.isNotEmpty) {
@@ -1369,7 +1381,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                             IconButton(
                               icon: Image.asset(
                                 'assets/png24/black/b_fullscreen.png',
-                                width: 24,
+                                width: iconSize,
                               ),
                               onPressed: () {
                                 if (_translatedText.isNotEmpty) {
@@ -1391,8 +1403,8 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                               child: IconButton(
                                 icon: Image.asset(
                                   'assets/png24/black/b_lightbulb.png', // Make sure this path matches where the image is placed
-                                  width: 28,
-                                  height: 28,
+                                  width: iconSize,
+                                  height: iconSize,
                                 ),
                                 onPressed:
                                     _isTranslating
@@ -1441,7 +1453,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                             IconButton(
                               icon: Image.asset(
                                 'assets/images/zoom-plus.png',
-                                width: 26,
+                                width: iconSize,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -1457,7 +1469,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                             IconButton(
                               icon: Image.asset(
                                 'assets/images/zoom-minus.png',
-                                width: 26,
+                                width: iconSize,
                               ),
                               onPressed: () {
                                 setState(() {
@@ -1493,7 +1505,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                       )
                                       : Image.asset(
                                         'assets/png24/black/b_speaker.png',
-                                        width: 24,
+                                        width: iconSize,
                                       ),
                             ),
                           ],
