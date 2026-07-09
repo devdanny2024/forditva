@@ -28,6 +28,7 @@ jobs:
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+      DOTENV: ${{ secrets.DOTENV }}
 
     steps:
       - name: Checkout
@@ -247,6 +248,17 @@ jobs:
               f.write(f"KC_PATH={KC_PATH}\n")
               f.write(f"CERT_ID={cert_id}\n")
           print(f"Signing ready - cert={cert_id}  profile={pp_uuid}")
+
+      - name: Write .env (bundled Flutter asset with API keys)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DOTENV:-}" ]; then
+            echo "ERROR: DOTENV secret is empty. Set it with: gh secret set DOTENV < .env"
+            exit 1
+          fi
+          printf '%s' "$DOTENV" > .env
+          echo ".env written ($(wc -c < .env) bytes)"
 
       - name: Flutter pub get
         run: flutter pub get
