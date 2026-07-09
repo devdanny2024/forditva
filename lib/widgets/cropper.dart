@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img; // Alias for clarity
 import 'package:path_provider/path_provider.dart';
 
+import '../flutter_gen/gen_l10n/app_localizations.dart';
+
 const Color navRed = Color(0xFFCD2A3E);
 const Color navGreen = Color(0xFF436F4D);
 
@@ -344,7 +346,7 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
                   vertical: 10,
                 ),
                 child: Text(
-                  "Shape with your finger the required area",
+                  AppLocalizations.of(context)!.cropInstruction,
                   style: GoogleFonts.robotoCondensed(
                     color: Colors.black,
                     fontSize: 16,

@@ -103,7 +103,7 @@ abstract class AppLocalizations {
   /// No description provided for @title.
   ///
   /// In en, this message translates to:
-  /// **'Forditva'**
+  /// **'forditva'**
   String get title;
 
   /// No description provided for @menu.
@@ -151,7 +151,7 @@ abstract class AppLocalizations {
   /// No description provided for @licenseCredit.
   ///
   /// In en, this message translates to:
-  /// **'License & Credit'**
+  /// **'License & Credits'**
   String get licenseCredit;
 
   /// No description provided for @searchHint.
@@ -190,6 +190,12 @@ abstract class AppLocalizations {
   /// **'Copy to clipboard'**
   String get copyToClipboard;
 
+  /// No description provided for @copiedToClipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get copiedToClipboard;
+
   /// No description provided for @searchFavorites.
   ///
   /// In en, this message translates to:
@@ -225,6 +231,288 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete'**
   String get delete;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @ok.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get ok;
+
+  /// No description provided for @done.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get done;
+
+  /// No description provided for @gotIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get gotIt;
+
+  /// No description provided for @profileAndSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile and Settings'**
+  String get profileAndSettings;
+
+  /// No description provided for @appSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'App Settings'**
+  String get appSettings;
+
+  /// No description provided for @appLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'App Language'**
+  String get appLanguage;
+
+  /// No description provided for @thirdLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'third language (beside HU and DE)'**
+  String get thirdLanguage;
+
+  /// No description provided for @saveHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Save History'**
+  String get saveHistory;
+
+  /// No description provided for @clearEntireHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear Entire History'**
+  String get clearEntireHistory;
+
+  /// No description provided for @clearHistoryConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete your entire translation history? This action cannot be undone.'**
+  String get clearHistoryConfirm;
+
+  /// No description provided for @historyCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'History cleared'**
+  String get historyCleared;
+
+  /// No description provided for @credits.
+  ///
+  /// In en, this message translates to:
+  /// **'Credits'**
+  String get credits;
+
+  /// No description provided for @howItWorks.
+  ///
+  /// In en, this message translates to:
+  /// **'How it works ...'**
+  String get howItWorks;
+
+  /// No description provided for @howItWorksBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This app is powered by community spirit! You can get a credit code via your user account on wir-in-ungarn.hu. There is no commercial checkout here — credits are earned solely through your engagement, whether by contributing content or helping out in the community. Your participation is our currency!'**
+  String get howItWorksBody;
+
+  /// No description provided for @currentStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Status'**
+  String get currentStatus;
+
+  /// No description provided for @codeForFillingCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Code for recharging'**
+  String get codeForFillingCredits;
+
+  /// No description provided for @pleaseEnterCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a code'**
+  String get pleaseEnterCode;
+
+  /// No description provided for @codeSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Code submitted'**
+  String get codeSubmitted;
+
+  /// No description provided for @organizeCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage Credits'**
+  String get organizeCredits;
+
+  /// No description provided for @gotoProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to my profile on wir-in-ungarn.hu'**
+  String get gotoProfile;
+
+  /// No description provided for @couldNotOpenPage.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the page'**
+  String get couldNotOpenPage;
+
+  /// No description provided for @languageLearning.
+  ///
+  /// In en, this message translates to:
+  /// **'Language Learning'**
+  String get languageLearning;
+
+  /// No description provided for @levelDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Set your current level from 01 (absolute beginner) to 99 (solid intermediate/B1). This tailors the AI Tutor\'s vocabulary and grammar explanations exactly to your needs.'**
+  String get levelDescription;
+
+  /// No description provided for @levelTip.
+  ///
+  /// In en, this message translates to:
+  /// **'Tip: You can dynamically adjust your level directly inside the Tutor at any time.'**
+  String get levelTip;
+
+  /// No description provided for @myCurrentLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'My current Level'**
+  String get myCurrentLevel;
+
+  /// No description provided for @ttsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Speech playback failed'**
+  String get ttsFailed;
+
+  /// No description provided for @recordingFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording failed.'**
+  String get recordingFailed;
+
+  /// No description provided for @transcriptionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcription failed'**
+  String get transcriptionFailed;
+
+  /// No description provided for @couldNotTranscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t transcribe audio. Please try again.'**
+  String get couldNotTranscribe;
+
+  /// No description provided for @pleaseMakeRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Please make a recording'**
+  String get pleaseMakeRecording;
+
+  /// No description provided for @wrongLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong Language'**
+  String get wrongLanguage;
+
+  /// No description provided for @wrongLanguageBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Please select or enter the correct language.'**
+  String get wrongLanguageBody;
+
+  /// No description provided for @editTextHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit text...'**
+  String get editTextHint;
+
+  /// No description provided for @imageNotClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Image Not Clear'**
+  String get imageNotClear;
+
+  /// No description provided for @imageNotClearBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The image is not clear enough for the AI to read. Please try another image.'**
+  String get imageNotClearBody;
+
+  /// No description provided for @serviceUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The service is temporarily unavailable. Please try again later.'**
+  String get serviceUnavailable;
+
+  /// No description provided for @speakCorrectLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Please speak the correct language.'**
+  String get speakCorrectLanguage;
+
+  /// No description provided for @langMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Detected language is {detected} but your selected input is {selected}. Would you like to switch the input language?'**
+  String langMismatch(Object detected, Object selected);
+
+  /// No description provided for @translateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate'**
+  String get translateAction;
+
+  /// No description provided for @documentPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the text here or paste it from the clipboard.'**
+  String get documentPlaceholder;
+
+  /// No description provided for @imagePickerLine1.
+  ///
+  /// In en, this message translates to:
+  /// **'CLICK TO TAKE A PHOTO OR'**
+  String get imagePickerLine1;
+
+  /// No description provided for @imagePickerLink.
+  ///
+  /// In en, this message translates to:
+  /// **'LOAD UP FROM'**
+  String get imagePickerLink;
+
+  /// No description provided for @imagePickerLine2.
+  ///
+  /// In en, this message translates to:
+  /// **' YOUR DEVICE.'**
+  String get imagePickerLine2;
+
+  /// No description provided for @cropInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Shape with your finger the required area'**
+  String get cropInstruction;
+
+  /// No description provided for @errorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection problem'**
+  String get errorTitle;
+
+  /// No description provided for @errorMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'We can\'t reach the translation service right now. Please check your internet connection and try again.'**
+  String get errorMessage;
 }
 
 class _AppLocalizationsDelegate

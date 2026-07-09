@@ -3,9 +3,20 @@ import 'package:forditva/db/database.dart'; // adjust path if needed
 import 'package:google_fonts/google_fonts.dart';
 
 import 'flutter_gen/gen_l10n/app_localizations.dart';
+import 'widgets/tutor_dialog.dart';
 
-const Color textGrey = Color(0xFF898888);
 const Color navGreen = Color(0xFF436F4D);
+
+/// The Hungarian side of an entry, used by the Tutor button.
+String _hungarianOf(Translation e) {
+  if (e.fromLang.toUpperCase() == 'HU') return e.input;
+  if (e.toLang.toUpperCase() == 'HU') return e.output;
+  return e.input;
+}
+
+/// The Tutor bulb only makes sense when the entry actually has Hungarian text.
+bool _hasHungarian(Translation e) =>
+    e.fromLang.toUpperCase() == 'HU' || e.toLang.toUpperCase() == 'HU';
 const Color gold = Colors.amber;
 
 class FavoritePage extends StatefulWidget {
@@ -47,10 +58,14 @@ class _FavoritePageState extends State<FavoritePage> {
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
 
-    return Scaffold(
-      backgroundColor: textGrey,
-      appBar: AppBar(title: Text(loc.favorites)), // ← localized title
-      body: Column(
+    return Container(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/bg-dark.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
@@ -94,7 +109,7 @@ class _FavoritePageState extends State<FavoritePage> {
                   return Center(
                     child: Text(
                       loc.noFavoritesFound, // ← localized message
-                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                      style: const TextStyle(fontSize: 16, color: Colors.white70),
                     ),
                   );
                 }
@@ -148,6 +163,26 @@ class _FavoritePageState extends State<FavoritePage> {
                               ],
                             ),
                           ),
+
+                          // Tutor (light-bulb): only when the entry has Hungarian.
+                          if (_hasHungarian(entry))
+                            IconButton(
+                              icon: Image.asset(
+                                'assets/images/bulb.png',
+                                width: 24,
+                                height: 24,
+                              ),
+                              tooltip: 'Tutor',
+                              onPressed:
+                                  () => showTutorExplanation(
+                                    context: context,
+                                    hungarianText: _hungarianOf(entry),
+                                    uiLang:
+                                        Localizations.localeOf(
+                                          context,
+                                        ).languageCode.toUpperCase(),
+                                  ),
+                            ),
 
                           // Unfavorite star
                           IconButton(

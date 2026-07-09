@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../main.dart'; // for Language enum
+import '../models/language_enum.dart';
 
 class DocumentLanguageState extends ChangeNotifier {
   Language _leftLang = Language.english;

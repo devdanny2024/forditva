@@ -1,17 +1,24 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
-import 'package:forditva/services/chatgpt_service.dart';
-import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
+import 'package:forditva/services/gemini_image_service.dart';
+import 'package:forditva/services/gemini_translation_service.dart';
+import 'package:forditva/services/gemini_tts_service.dart';
+import 'package:share_plus/share_plus.dart'; // your Gemini client
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'flutter_gen/gen_l10n/app_localizations.dart';
+import 'services/third_language_pref.dart';
+import 'widgets/copied_toast.dart';
 
 // Colors and constants
 const Color navRed = Color(0xFFCD2A3E);
@@ -19,7 +26,28 @@ const Color navGreen = Color(0xFF436F4D);
 const Color textGrey = Color(0xFF898888);
 const Color gold = Colors.amber;
 
-enum Language { hu, de, en }
+enum Language { hu, de, en, nl, fr, es, ru, it }
+
+/// This page keeps its own local Language enum (hu/de/en/...) instead of
+/// importing models/language_enum.dart, so the shared "third language"
+/// preference is looked up by its two-letter code rather than by type.
+Language _localThirdLang() {
+  switch (ThirdLanguagePref.currentCode) {
+    case 'NL':
+      return Language.nl;
+    case 'FR':
+      return Language.fr;
+    case 'ES':
+      return Language.es;
+    case 'RU':
+      return Language.ru;
+    case 'IT':
+      return Language.it;
+    case 'EN':
+    default:
+      return Language.en;
+  }
+}
 
 class ImagePlaceholderPage extends StatefulWidget {
   const ImagePlaceholderPage({super.key});
@@ -34,7 +62,113 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   File? _croppedImageFile; // The cropped image (if any)
 
   // AI service & state
-  final ChatGptService _chat = ChatGptService();
+  final GeminiImageService _chat = GeminiImageService();
+  final _ttsService = GeminiTtsService();
+  ap.AudioPlayer? _resultPlayer;
+
+  /// Extracts plain, speakable text from the result (JSON segments or HTML).
+  String _speakableText() {
+    final raw = _resultText.trim();
+    if (raw.isEmpty) return '';
+    try {
+      final decoded = json.decode(raw);
+      if (decoded is List) {
+        return decoded
+            .map((e) => (e is Map ? e['t']?.toString() : null) ?? '')
+            .where((s) => s.isNotEmpty)
+            .join('. ');
+      }
+    } catch (_) {}
+    return raw
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  // Public so the nav bar (main.dart, via a GlobalKey) can reactively enable
+  // the Tutor bulb only while Hungarian text is actually present on this page.
+  final ValueNotifier<bool> hasHungarianText = ValueNotifier(false);
+
+  void _updateHasHungarianText() {
+    hasHungarianText.value = _hungarianText().isNotEmpty;
+  }
+
+  /// Extracts the Hungarian segment(s) from the result, whichever side
+  /// (original 'o' or translated 't') is currently set to Hungarian.
+  String _hungarianText() {
+    final raw = _resultText.trim();
+    if (raw.isEmpty) return '';
+    if (_rightLang != Language.hu && _leftLang != Language.hu) return '';
+    final key = _rightLang == Language.hu ? 'o' : 't';
+    try {
+      final decoded = json.decode(raw);
+      if (decoded is List) {
+        return decoded
+            .map((e) => (e is Map ? e[key]?.toString() : null) ?? '')
+            .where((s) => s.isNotEmpty)
+            .join('. ');
+      }
+    } catch (_) {}
+    return raw
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  // Tutor: called by the nav bar's bulb button (main.dart, via GlobalKey).
+  void openTutor() {
+    final hungarianText = _hungarianText();
+    if (hungarianText.isEmpty) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    _gemini
+        .translate(
+          hungarianText,
+          _langCode(Language.hu),
+          _langCode(_leftLang == Language.hu ? _rightLang : _leftLang),
+          explain: true,
+          uiLanguage: Localizations.localeOf(context).languageCode.toUpperCase(),
+        )
+        .then((explanation) {
+          if (!mounted) return;
+          Navigator.of(context).pop();
+          showDialog(
+            context: context,
+            builder:
+                (_) => AlertDialog(
+                  content: SingleChildScrollView(child: Text(explanation)),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(AppLocalizations.of(context)!.ok),
+                    ),
+                  ],
+                ),
+          );
+        })
+        .catchError((_) {
+          if (mounted) Navigator.of(context).pop();
+        });
+  }
+
+  Future<void> _speakResult() async {
+    final text = _speakableText();
+    if (text.isEmpty) return;
+    try {
+      _resultPlayer ??= ap.AudioPlayer();
+      await _resultPlayer!.stop();
+      final file = await _ttsService.synthesizeSpeech(
+        text: text,
+        langCode: _langCode(_leftLang),
+      );
+      await _resultPlayer!.play(ap.DeviceFileSource(file.path));
+    } catch (e) {
+      debugPrint('Image TTS failed: $e');
+    }
+  }
   bool _isProcessing = false;
   String _resultText = '';
 
@@ -70,11 +204,23 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     Language.en: 'assets/flags/EN_BW_LS.png',
     Language.de: 'assets/flags/DE_BW_LS.png',
     Language.hu: 'assets/flags/HU_BW_LS.png',
+    // No dedicated _BW_LS card flags for these yet — reuse the colored
+    // settings-selector flag until Markus sends one.
+    Language.nl: 'assets/flags/NL_L.png',
+    Language.fr: 'assets/flags/FR_L.png',
+    Language.es: 'assets/flags/ES_L.png',
+    Language.ru: 'assets/flags/RU_L.png',
+    Language.it: 'assets/flags/IT_L.png',
   };
   final Map<Language, String> _labelPaths = {
     Language.en: 'assets/images/EN-EN.png',
     Language.de: 'assets/images/DE-DE.png',
     Language.hu: 'assets/images/HU-HU.png',
+    Language.nl: 'assets/images/NL-NL.png',
+    Language.fr: 'assets/images/FR-FR.png',
+    Language.es: 'assets/images/ES-ES.png',
+    Language.ru: 'assets/images/RU-RU.png',
+    Language.it: 'assets/images/IT-IT.png',
   };
 
   String stripHtmlCodeFence(String input) {
@@ -152,6 +298,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    hasHungarianText.dispose();
     super.dispose();
   }
 
@@ -164,12 +311,23 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         return "DE";
       case Language.hu:
         return "HU";
+      case Language.nl:
+        return "NL";
+      case Language.fr:
+        return "FR";
+      case Language.es:
+        return "ES";
+      case Language.ru:
+        return "RU";
+      case Language.it:
+        return "IT";
     }
   }
 
-  // Get next language in the enum, skipping the 'other'
+  // Get next language in the enum, skipping the 'other'. The third slot is
+  // whatever the user picked in Settings (defaults to English).
   Language _next(Language current, Language other) {
-    final list = [Language.hu, Language.de, Language.en];
+    final list = [Language.hu, Language.de, _localThirdLang()];
     int i = list.indexOf(current);
     Language next = list[(i + 1) % list.length];
     if (next == other) {
@@ -320,6 +478,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         fontSize: calculateFontSizes(orig, panelH) * _zoomLevel,
                         fontWeight: FontWeight.bold,
                         color: navRed,
+                        letterSpacing: -0.3,
                       ),
                     ),
                   if (trans.isNotEmpty)
@@ -332,6 +491,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                               calculateFontSizes(trans, panelH) * _zoomLevel,
                           fontWeight: FontWeight.w500,
                           color: navGreen,
+                          letterSpacing: -0.3,
                         ),
                       ),
                     ),
@@ -374,16 +534,21 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
       final rawDetected = await _gemini.detectLanguage(sampleText);
 
-      // Normalize Gemini result (this is the KEY PATCH)
-      final detected = rawDetected
-          .toUpperCase() // make uppercase
-          .replaceAll('-', '') // remove hyphens (e.g. "HU-HU" -> "HUHU")
-          .substring(0, 2); // take only first 2 letters
+      // Normalize Gemini result. Guard the substring so a short/empty result
+      // can't throw a RangeError (which was surfacing as a false error).
+      final normalized = rawDetected.toUpperCase().replaceAll('-', '');
+      final detected =
+          normalized.length >= 2 ? normalized.substring(0, 2) : normalized;
 
       final langCodes = {
         Language.hu: 'HU',
         Language.de: 'DE',
         Language.en: 'EN',
+        Language.nl: 'NL',
+        Language.fr: 'FR',
+        Language.es: 'ES',
+        Language.ru: 'RU',
+        Language.it: 'IT',
       };
 
       if (detected != langCodes[_rightLang]) {
@@ -396,7 +561,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   content: Text(
-                    "Detected language is $detected but your selected input is ${langCodes[_rightLang]}. Would you like to switch the input language?",
+                    AppLocalizations.of(context)!.langMismatch(
+                      detected,
+                      langCodes[_rightLang] ?? '',
+                    ),
                   ),
                   actionsPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -425,11 +593,18 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                         Navigator.of(context).pop();
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (!mounted) return;
+                          final newRightLang =
+                              langCodes.entries
+                                  .firstWhere((e) => e.value == detected)
+                                  .key;
                           setState(() {
-                            _rightLang =
-                                langCodes.entries
-                                    .firstWhere((e) => e.value == detected)
-                                    .key;
+                            _rightLang = newRightLang;
+                            // Guard against both sides ending up on the same
+                            // language (e.g. accepting "detected DE" while
+                            // the left side is already DE).
+                            if (_leftLang == newRightLang) {
+                              _leftLang = _next(_leftLang, newRightLang);
+                            }
                           });
                           if (_imageFile != null) {
                             _processImage(imageFile: _imageFile!);
@@ -460,23 +635,29 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           context: context,
           builder:
               (_) => AlertDialog(
-                title: const Text("Image Not Clear"),
-                content: const Text(
-                  "The image is not clear enough for AI to read. Please try another image.",
-                ),
+                title: Text(AppLocalizations.of(context)!.imageNotClear),
+                content: Text(AppLocalizations.of(context)!.imageNotClearBody),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text("OK"),
+                    child: Text(AppLocalizations.of(context)!.ok),
                   ),
                 ],
               ),
         );
       }
     } catch (e) {
-      setState(() => _resultText = 'Error: $e');
+      debugPrint('Image processing failed: $e');
+      // Show errors as a toast, not in the result box.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.serviceUnavailable),
+          ),
+        );
+      }
     } finally {
-      setState(() => _isProcessing = false);
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
@@ -528,8 +709,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
   @override
   Widget build(BuildContext context) {
-    const double boxW = 486;
-    const double switcherW = 350;
+    _updateHasHungarianText();
+    final double boxW = MediaQuery.of(context).size.width.clamp(0, 486).toDouble() - 32;
+    final double switcherW = (MediaQuery.of(context).size.width * 0.85).clamp(0, 350).toDouble();
     const double switcherH = 55;
     const double flagSize = 50;
     const double switchSize = 50;
@@ -635,12 +817,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                         color: navRed,
                                                       ),
                                                   children: [
-                                                    const TextSpan(
+                                                    TextSpan(
                                                       text:
-                                                          'CLICK TO TAKE A PHOTO OR\n',
+                                                          '${AppLocalizations.of(context)!.imagePickerLine1}\n',
                                                     ),
                                                     TextSpan(
-                                                      text: 'LOAD UP FROM',
+                                                      text: AppLocalizations.of(context)!.imagePickerLink,
                                                       style: const TextStyle(
                                                         fontWeight:
                                                             FontWeight.bold,
@@ -653,8 +835,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                             ..onTap =
                                                                 _pickFromGallery,
                                                     ),
-                                                    const TextSpan(
-                                                      text: ' YOUR DEVICE.',
+                                                    TextSpan(
+                                                      text: AppLocalizations.of(context)!.imagePickerLine2,
                                                     ),
                                                   ],
                                                 ),
@@ -665,36 +847,50 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                         ),
                               ),
                             ),
-                            // New "Close" (X) button at bottom left when there's an image
+                            // Trash (discard) + camera (retake) at bottom
+                            // left when there's an image, replacing the old
+                            // single close(X) button.
                             if ((_croppedImageFile ?? _imageFile) != null)
                               Positioned(
                                 bottom: 8,
                                 left: 8,
-                                child: GestureDetector(
-                                  onTap: () async {
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    await prefs.remove('lastImagePath');
-                                    await prefs.remove('lastResultText');
+                                child: Row(
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () async {
+                                        final prefs =
+                                            await SharedPreferences.getInstance();
+                                        await prefs.remove('lastImagePath');
+                                        await prefs.remove('lastResultText');
 
-                                    setState(() {
-                                      _imageFile = null;
-                                      _croppedImageFile = null;
-                                      _resultText = '';
-                                      _isProcessing = false;
-                                      _laActive = false;
-                                      _interpretMode = false;
-                                      _splitRatio = 0.5;
-                                    });
-                                  },
-                                  child: Image.asset(
-                                    'assets/images/close.png',
-                                    width: iconSize,
-                                    height: iconSize,
-                                  ),
+                                        setState(() {
+                                          _imageFile = null;
+                                          _croppedImageFile = null;
+                                          _resultText = '';
+                                          _isProcessing = false;
+                                          _laActive = false;
+                                          _interpretMode = false;
+                                          _splitRatio = 0.5;
+                                        });
+                                      },
+                                      child: Image.asset(
+                                        'assets/png24/black/b_garbage.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    GestureDetector(
+                                      onTap: _takePhoto,
+                                      child: Image.asset(
+                                        'assets/png24/black/b_photo.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              
                           ],
                         ),
                       ),
@@ -849,6 +1045,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                           panelH,
                                                         ) *
                                                         _zoomLevel,
+                                                    letterSpacing: -0.3,
                                                   ),
                                             );
                                           }
@@ -873,14 +1070,11 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                         Clipboard.setData(
                                           ClipboardData(text: textToCopy),
                                         );
-                                        ScaffoldMessenger.of(
+                                        showCopiedToast(
                                           context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Copied to clipboard',
-                                            ),
-                                          ),
+                                          AppLocalizations.of(
+                                            context,
+                                          )!.copiedToClipboard,
                                         );
                                       },
                                       child: Image.asset(
@@ -904,51 +1098,28 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     // SizedBox(width: iconSize * 0.5),
                                     // Icon(Icons.volume_up, size: iconSize),
                                     SizedBox(width: iconSize * 0.5),
+                                    // Share
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (_resultText.isNotEmpty) {
+                                          Share.share(_resultText);
+                                        }
+                                      },
+                                      child: Image.asset(
+                                        'assets/png24/black/b_share.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+                                    SizedBox(width: iconSize * 0.5),
+                                    // Fullscreen (zoomable view)
                                     GestureDetector(
                                       onTap:
                                           () => setState(
                                             () => _zoomable = !_zoomable,
                                           ),
-                                      child: Icon(
-                                        _zoomable
-                                            ? Icons.fullscreen
-                                            : Icons.zoom_in_map,
-                                        size: iconSize,
-                                      ),
-                                    ),
-                                    SizedBox(width: iconSize * 0.5),
-
-                                    // Zoom Out Button
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _zoomLevel = (_zoomLevel - 0.1).clamp(
-                                            0.5,
-                                            2.0,
-                                          );
-                                        });
-                                      },
                                       child: Image.asset(
-                                        'assets/images/zoom-minus.png', // ✅ Make sure this path is correct
-                                        width: iconSize,
-                                        height: iconSize,
-                                      ),
-                                    ),
-
-                                    SizedBox(width: iconSize * 0.5),
-
-                                    // Zoom In Button
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          _zoomLevel = (_zoomLevel + 0.1).clamp(
-                                            0.5,
-                                            2.0,
-                                          );
-                                        });
-                                      },
-                                      child: Image.asset(
-                                        'assets/images/zoom-plus.png', // ✅ Make sure this path is correct
+                                        'assets/png24/black/b_fullscreen.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),
@@ -965,21 +1136,37 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                               );
                                             }
                                           }),
-                                      child:
-                                          _interpretMode
-                                              ? Icon(
-                                                Icons.interpreter_mode,
-                                                size: iconSize,
-                                              )
-                                              : Image.asset(
-                                                'assets/png24/black/b_translate.png',
-                                                width: iconSize,
-                                                height: iconSize,
-                                              ),
+                                      // Same asset in both states (no built-in
+                                      // Material icon); active state shown via
+                                      // a highlight, not a different glyph.
+                                      child: Container(
+                                        padding: EdgeInsets.all(
+                                          iconSize * 0.12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color:
+                                              _interpretMode
+                                                  ? Colors.black12
+                                                  : Colors.transparent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Image.asset(
+                                          'assets/png24/black/b_translate.png',
+                                          width: iconSize,
+                                          height: iconSize,
+                                        ),
+                                      ),
                                     ),
                                     SizedBox(width: iconSize * 0.5),
-                                    if (!_interpretMode)
-                                      GestureDetector(
+                                    // Reserve this slot's space even when
+                                    // hidden in interpret mode, so the speaker
+                                    // icon after it never shifts position.
+                                    Visibility(
+                                      visible: !_interpretMode,
+                                      maintainSize: true,
+                                      maintainAnimation: true,
+                                      maintainState: true,
+                                      child: GestureDetector(
                                         onTap: () {
                                           setState(() {
                                             _laActive = !_laActive;
@@ -993,6 +1180,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           height: iconSize,
                                         ),
                                       ),
+                                    ),
+                                    SizedBox(width: iconSize * 0.5),
+                                    // Speaker — read the translated result aloud
+                                    GestureDetector(
+                                      onTap: _speakResult,
+                                      child: Image.asset(
+                                        'assets/png24/black/b_speaker.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1028,8 +1226,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       _laActive = false;
                       _zoomLevel = 1.0;
                     });
-                    if (_imageFile != null)
+                    if (_imageFile != null) {
                       _processImage(imageFile: _imageFile!);
+                    }
                   },
                   child: Row(
                     children: [
@@ -1083,8 +1282,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       _laActive = false;
                       _zoomLevel = 1.0;
                     });
-                    if (_imageFile != null)
+                    if (_imageFile != null) {
                       _processImage(imageFile: _imageFile!);
+                    }
                   },
 
                   child: Row(

@@ -1,19 +1,24 @@
-// lib/textpage.dart
-
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:forditva/document/document_translation_state.dart';
 import 'package:forditva/models/language_enum.dart';
-import 'package:forditva/services/OpenAiTtsService.dart'; // your Gemini client
+import 'package:forditva/services/gemini_tts_service.dart';
+import 'package:forditva/services/learning_store.dart';
+import 'package:forditva/services/level_pref.dart';
+import 'package:forditva/widgets/error_dialog.dart';
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
+import 'package:forditva/services/third_language_pref.dart';
 import 'package:forditva/utils/debouncer.dart'; // if you created it separately
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/edit_recording_modal.dart';
 import 'package:forditva/widgets/recording_modal.dart'; // adjust path as needed
+import 'package:forditva/widgets/copied_toast.dart';
 import 'package:forditva/widgets/translation_card.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -37,47 +42,113 @@ extension LanguageRecordingText on Language {
       case Language.german:
         return 'Beginnen Sie die Aufnahme…';
       case Language.english:
-      default:
+      case Language.dutch:
+      case Language.french:
+      case Language.spanish:
+      case Language.russian:
+      case Language.italian:
         return 'Begin recording…';
     }
   }
 }
 
 String instructionForLang(Language lang) {
-  switch (lang) {
-    case Language.hungarian:
-      return "Speak as this dialect: Hungarian";
-    case Language.german:
-      return "Speak as this dialect: German";
-    case Language.english:
-      return "Speak as this dialect: English";
-    default:
-      return "Speak as this dialect: English";
-  }
+  // Force the TTS to pronounce in the target language. The soft
+  // "speak as this dialect" hint was being ignored, so French text was read
+  // with a Hungarian accent (Markus's voice note). Name the language firmly.
+  return "The following text is in ${lang.fullName}. "
+      "Read it aloud in ${lang.fullName} with a natural native "
+      "${lang.fullName} accent and pronunciation. Do not use any other "
+      "language's accent.";
 }
 
 final Map<Language, String> _labelImages = {
-  Language.english: 'assets/images/EN-EN.png',
-  Language.german: 'assets/images/DE-DE.png',
-  Language.hungarian: 'assets/images/HU-HU.png',
+  for (final lang in Language.values) lang: 'assets/images/${lang.label}-${lang.label}.png',
 };
 
 // Add this OUTSIDE your classes
-String flagAsset(Language lang, {required bool whiteBorder}) {
-  switch (lang) {
-    case Language.hungarian:
-      return whiteBorder ? 'assets/flags/HU_BW.png' : 'assets/flags/HU_BB.png';
-    case Language.german:
-      return whiteBorder ? 'assets/flags/DE_BW.png' : 'assets/flags/DE_BB.png';
-    case Language.english:
-      return whiteBorder ? 'assets/flags/EN_BW.png' : 'assets/flags/EN_BB.png';
-  }
+// Markus's own bordered square flag: the `_W` (white border) variant on dark
+// cards, `_B` (anthracite border) on light ones. Clipped to rounded corners so
+// the JPG's opaque corners don't show against the card.
+Widget borderedFlag(
+  Language lang, {
+  required bool whiteBorder,
+  double size = 30,
+}) {
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(size * 0.22),
+    child: Image.asset(
+      'assets/flags/${lang.label}_${whiteBorder ? 'W' : 'B'}.png',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+    ),
+  );
 }
 
 bool _isAudioPlaying = false;
 
+/// Clips a card to a stepped seam that runs through the switch button.
+///
+/// The seam is flat (horizontal) on both sides at two different heights, with a
+/// short step that is hidden behind the switch button in the centre:
+///   left side  -> at the TOP of the switch    (bright card reaches up to here)
+///   right side -> at the BOTTOM of the switch  (dark card reaches down to here)
+///
+/// For the top (dark) card [keepTop] is true (keep everything above the seam);
+/// for the bottom (bright) card it is false (keep everything below). Both cards
+/// use the same seam in screen space, so they tile along it.
+class _SeamClipper extends CustomClipper<Path> {
+  final double switchSize;
+  final bool keepTop;
+
+  const _SeamClipper({required this.switchSize, required this.keepTop});
+
+  @override
+  Path getClip(Size size) {
+    final centerX = size.width / 2;
+    // Width of the slanted transition. Kept narrow enough to sit behind the
+    // switch button's flat face so its corners never peek out.
+    final stepHalf = switchSize / 2 - 18;
+
+    final path = Path();
+    if (keepTop) {
+      // Dark card: flat at the top-of-switch level on the left, flat at the
+      // bottom-of-switch level on the right, keep everything above.
+      final topLevel = size.height - switchSize; // top of switch
+      final bottomLevel = size.height; // bottom of switch
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width, bottomLevel);
+      path.lineTo(centerX + stepHalf, bottomLevel);
+      path.lineTo(centerX - stepHalf, topLevel);
+      path.lineTo(0, topLevel);
+    } else {
+      // Bright card: flat at the top-of-switch level (y 0) on the left, flat at
+      // the bottom-of-switch level (y switchSize) on the right, keep below.
+      // 1px of slack upward so the seam has no anti-aliased hairline.
+      path.moveTo(0, -1);
+      path.lineTo(centerX - stepHalf, -1);
+      path.lineTo(centerX + stepHalf, switchSize - 1);
+      path.lineTo(size.width, switchSize - 1);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    }
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(_SeamClipper oldClipper) =>
+      oldClipper.switchSize != switchSize || oldClipper.keepTop != keepTop;
+}
+
 class TextPage extends StatefulWidget {
-  const TextPage({super.key});
+  /// Called when the user taps the document icon on the bottom card, after
+  /// both cards' current text has been copied into Document mode.
+  final VoidCallback? onOpenDocument;
+
+  const TextPage({super.key, this.onOpenDocument});
 
   @override
   _TextPageState createState() => _TextPageState();
@@ -100,15 +171,21 @@ class _TextPageState extends State<TextPage> {
   ap.AudioPlayer? _inputAudioPlayer;
   ap.AudioPlayer? _outputAudioPlayer;
 
+  // Cache the last synthesized audio per card, keyed by the text it was
+  // generated for. Re-pressing play on unchanged text skips the TTS call
+  // entirely instead of re-synthesizing (removes the delay before playback).
+  String? _inputAudioCacheText;
+  File? _inputAudioCacheFile;
+  String? _outputAudioCacheText;
+  File? _outputAudioCacheFile;
+
   // ▶︎ your Gemini client
   final GeminiTranslator _gemini = GeminiTranslator();
-  final _ttsService = OpenAiTtsService(); // Or inject if you use DI
+  final _ttsService = GeminiTtsService();
 
   // ▶︎ map your Language enum into its two-letter codes
   final Map<Language, String> _langLabels = {
-    Language.hungarian: 'HU',
-    Language.german: 'DE',
-    Language.english: 'EN',
+    for (final lang in Language.values) lang: lang.label,
   };
   @override
   void didChangeDependencies() {
@@ -134,11 +211,19 @@ class _TextPageState extends State<TextPage> {
     });
     _inputAudioPlayer ??= ap.AudioPlayer();
 
-    final file = await _ttsService.synthesizeSpeech(
-      text: _translation,
-      voice: "onyx",
-      instructions: instructionForLang(_rightLanguage),
-    );
+    File file;
+    if (_inputAudioCacheText == _translation && _inputAudioCacheFile != null) {
+      file = _inputAudioCacheFile!;
+    } else {
+      file = await _ttsService.synthesizeSpeech(
+        text: _translation,
+        voice: "onyx",
+        instructions: instructionForLang(_rightLanguage),
+        langCode: _rightLanguage.code,
+      );
+      _inputAudioCacheText = _translation;
+      _inputAudioCacheFile = file;
+    }
 
     late final StreamSubscription sub;
     sub = _inputAudioPlayer!.onPlayerStateChanged.listen((state) {
@@ -169,11 +254,20 @@ class _TextPageState extends State<TextPage> {
     });
     _outputAudioPlayer ??= ap.AudioPlayer();
 
-    final file = await _ttsService.synthesizeSpeech(
-      text: _inputController.text,
-      voice: "onyx",
-      instructions: instructionForLang(_leftLanguage),
-    );
+    File file;
+    if (_outputAudioCacheText == _inputController.text &&
+        _outputAudioCacheFile != null) {
+      file = _outputAudioCacheFile!;
+    } else {
+      file = await _ttsService.synthesizeSpeech(
+        text: _inputController.text,
+        voice: "onyx",
+        instructions: instructionForLang(_leftLanguage),
+        langCode: _leftLanguage.code,
+      );
+      _outputAudioCacheText = _inputController.text;
+      _outputAudioCacheFile = file;
+    }
 
     late final StreamSubscription sub;
     sub = _outputAudioPlayer!.onPlayerStateChanged.listen((state) {
@@ -206,6 +300,7 @@ class _TextPageState extends State<TextPage> {
         text: text,
         voice: "onyx",
         instructions: instructions,
+        langCode: lang.code,
       );
       if (!await file.exists() || (await file.length()) == 0) {
         if (context.mounted) {
@@ -289,51 +384,53 @@ class _TextPageState extends State<TextPage> {
       }
     });
 
-    String sourceText;
-    Language fromLang, toLang;
+    final String sourceText =
+        leftChanged ? _translation : _inputController.text;
+    final Language fromLang = leftChanged ? _rightLanguage : _leftLanguage;
+    final Language toLang = leftChanged ? _leftLanguage : _rightLanguage;
 
-    if (leftChanged) {
-      sourceText = _translation;
-      fromLang = _rightLanguage;
-      toLang = _leftLanguage;
-      if (sourceText.trim().isEmpty) {
+    if (sourceText.trim().isEmpty) {
+      setState(() {
+        _isTranslating = false;
+        _isAudioLoadingOutput = false;
+        _isAudioLoadingInput = false;
+      });
+      return;
+    }
+
+    try {
+      final result = await _gemini.translate(
+        sourceText,
+        fromLang.code,
+        toLang.code,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (leftChanged) {
+          _inputController.text = result;
+        } else {
+          _translation = result;
+        }
+      });
+      if (playTTS) {
+        if (leftChanged) {
+          await _autoPlayOutputTTS();
+        } else {
+          await _autoPlayInputTTS();
+        }
+      }
+    } catch (_) {
+      // A failed translation used to leave the spinner spinning forever
+      // (Markus's "spinner doesn't stop"). Clear it and show a friendly popup.
+      if (mounted) showFriendlyError(context);
+    } finally {
+      if (mounted) {
         setState(() {
           _isTranslating = false;
           _isAudioLoadingOutput = false;
-        });
-        return;
-      }
-      final result = await _gemini.translate(
-        sourceText,
-        fromLang.code,
-        toLang.code,
-      );
-      setState(() {
-        _inputController.text = result;
-        _isTranslating = false;
-      });
-      if (playTTS) await _autoPlayOutputTTS(); // Only play TTS if allowed
-    } else {
-      sourceText = _inputController.text;
-      fromLang = _leftLanguage;
-      toLang = _rightLanguage;
-      if (sourceText.trim().isEmpty) {
-        setState(() {
-          _isTranslating = false;
           _isAudioLoadingInput = false;
         });
-        return;
       }
-      final result = await _gemini.translate(
-        sourceText,
-        fromLang.code,
-        toLang.code,
-      );
-      setState(() {
-        _translation = result;
-        _isTranslating = false;
-      });
-      if (playTTS) await _autoPlayInputTTS(); // Only play TTS if allowed
     }
   }
 
@@ -407,16 +504,14 @@ class _TextPageState extends State<TextPage> {
   }
 
   Future<String> translateFinal(String input, String from, String to) async {
-    if (from == 'HU' || to == 'HU') {
-      final normalized = await _gemini.translate(input, from, to);
-      // Only use the final translation result:
-      return await _gemini.translate(normalized, from, to);
-    } else {
-      return await _gemini.translate(input, from, to);
-    }
+    // Single pass — the previous HU branch translated twice, which doubled
+    // latency and re-translated an already-translated result.
+    return await _gemini.translate(input, from, to);
   }
 
-  String _explanationLevel = 'A2';
+  // Default CEFR level derived from the numeric level the user set in Settings
+  // (1-33 = A1, 34-66 = A2, 67-99 = B1). Refreshed each time the Tutor opens.
+  String _explanationLevel = LevelPref.cefr;
 
   void _showExplanationModal(String initialExplanation) {
     showDialog(
@@ -492,7 +587,11 @@ class _TextPageState extends State<TextPage> {
                             ],
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close),
+                            icon: Image.asset(
+                              'assets/png24/black/b_close.png',
+                              width: 24,
+                              height: 24,
+                            ),
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                         ],
@@ -644,9 +743,31 @@ class _TextPageState extends State<TextPage> {
   Language _leftLanguage = Language.hungarian;
   Language _rightLanguage = Language.german;
 
-  // 4) Helper to pick the next language, skipping the one on the other side
+  // Public so the nav bar (main.dart, via a GlobalKey) can reactively enable
+  // the Tutor bulb only while Hungarian text is actually present on this
+  // page. Recomputed once per build() rather than at every individual
+  // mutation site, since text/language state changes in many places here.
+  final ValueNotifier<bool> hasHungarianText = ValueNotifier(false);
+
+  void _updateHasHungarianText() {
+    final hungarianText =
+        _leftLanguage == Language.hungarian
+            ? _inputController.text
+            : _rightLanguage == Language.hungarian
+            ? _translation
+            : '';
+    hasHungarianText.value = hungarianText.trim().isNotEmpty;
+  }
+
+  // 4) Helper to pick the next language, skipping the one on the other side.
+  // The third slot is whatever the user picked in Settings (defaults to
+  // English), not English unconditionally.
   Language _nextLanguage(Language current, Language other) {
-    final all = [Language.hungarian, Language.german, Language.english];
+    final all = [
+      Language.hungarian,
+      Language.german,
+      ThirdLanguagePref.current,
+    ];
     var idx = all.indexOf(current);
     var next = all[(idx + 1) % all.length];
     if (next == other) next = all[(idx + 2) % all.length];
@@ -662,12 +783,27 @@ class _TextPageState extends State<TextPage> {
     required OnEditAndTranslate onEdited, // <- Use your typedef!
     required Future<bool> Function(String text) isTextInLanguage,
   }) {
+    // Interrupt any audio currently playing before the user starts editing,
+    // so the TTS voice doesn't keep talking over the correction.
+    _inputAudioPlayer?.stop();
+    _outputAudioPlayer?.stop();
+    _audioPlayer?.stop();
+    setState(() {
+      _isInputPlaying = false;
+      _isOutputPlaying = false;
+      _isAudioPlaying = false;
+    });
+
+    // Create the controller ONCE, outside the builder. The bottom sheet's
+    // builder re-runs on every keyboard toggle; creating the controller inside
+    // it rebuilt a fresh controller each time and wiped the recorded/typed text
+    // back to initialText (Markus: text disappears after record + keyboard).
+    final controller = TextEditingController(text: initialText);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final controller = TextEditingController(text: initialText);
         return SafeArea(
           child: EditTextModal(
             controller: controller,
@@ -679,7 +815,7 @@ class _TextPageState extends State<TextPage> {
           ),
         );
       },
-    );
+    ).whenComplete(controller.dispose);
   }
 
   final GlobalKey inputKey = GlobalKey();
@@ -698,9 +834,63 @@ class _TextPageState extends State<TextPage> {
   void _copyText(String text) {
     if (text.isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(AppLocalizations.of(context)!.copyToClipboard)),
-    );
+    showCopiedToast(context, AppLocalizations.of(context)!.copiedToClipboard);
+  }
+
+  // Document icon: carries both cards' current text into Document mode
+  // (top/dark card -> Document's input box, bottom/bright card -> Document's
+  // output box) and switches to that tab.
+  void _openInDocumentMode() {
+    DocumentTranslationState.inputText = _translation;
+    DocumentTranslationState.translatedText = _inputController.text;
+    // Carry the languages so the document panel speaks each side in the right
+    // voice. inputText is the right-language text, translatedText the left.
+    DocumentTranslationState.leftLang = _leftLanguage;
+    DocumentTranslationState.rightLang = _rightLanguage;
+    widget.onOpenDocument?.call();
+  }
+
+  // Tutor: opens the grammar/vocabulary explanation modal for whichever card
+  // actually holds the Hungarian text (not always the top card, that was a
+  // bug — the Tutor was explaining German text whenever German happened to
+  // be on top). Public so the nav bar's bulb button (main.dart) can trigger
+  // it via a GlobalKey, now that the bulb no longer lives on the card itself.
+  void openTutor() {
+    // Pick up the latest level from Settings each time the Tutor opens.
+    _explanationLevel = LevelPref.cefr;
+    final hungarianText =
+        _leftLanguage == Language.hungarian
+            ? _inputController.text.trim()
+            : _rightLanguage == Language.hungarian
+            ? _translation.trim()
+            : '';
+    if (hungarianText.isNotEmpty) {
+      setState(() => _isTranslating = true);
+      _showLoaderBeforeModal(() async {
+        try {
+          final explanation = await _gemini.translate(
+            hungarianText,
+            _langLabels[_leftLanguage]!,
+            _langLabels[_rightLanguage]!,
+            explain: true,
+            level: _explanationLevel,
+            // Explanation must be written in the app's UI language, not
+            // whichever content language is currently selected for translation.
+            uiLanguage: Localizations.localeOf(context).languageCode.toUpperCase(),
+          );
+          // Record it in the Learning history so the user can revisit it later.
+          await LearningStore.add(
+            sentence: hungarianText,
+            explanation: explanation,
+          );
+          return explanation;
+        } catch (_) {
+          return 'Failed to load explanation.';
+        } finally {
+          if (mounted) setState(() => _isTranslating = false);
+        }
+      });
+    }
   }
 
   Future<void> _playSound(String text, Language lang) async {
@@ -721,69 +911,56 @@ class _TextPageState extends State<TextPage> {
 
     _inputAudioPlayer?.dispose();
     _outputAudioPlayer?.dispose();
+    hasHungarianText.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _updateHasHungarianText();
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Symmetric vertical padding so the two cards mirror each other
+        // exactly. halfHeight is measured from the *padded* area, so the top
+        // and bottom cards come out identical in height and margin. Kept small
+        // so the cards fill toward the menu with little wasted space.
+        final double vPad = 3.0;
+        final halfHeight = (constraints.maxHeight - 2 * vPad) / 2;
         final switchSize = 70.0;
-        final flagSize = 30.0;
-
-        final halfH = constraints.maxHeight / 2;
-        final inputCardTop = 0.0;
-        final inputCardHeight = halfH + switchSize / 2;
-        final outputCardTop = halfH - switchSize / 2 - 15.0;
-        final outputCardHeight = halfH + switchSize / 2;
-        final switchRowTop = halfH - switchSize / 2 / 0.7;
-        final rightOverlayTop = halfH - switchSize / 2 / 0.7;
-        print(
-          '_isTopRecording: $_isTopRecording, _isBottomRecording: $_isBottomRecording',
-        );
+        final switchHalf = switchSize / 2;
+        // The two cards are mirror images about the centre line: equal heights,
+        // equal margins. They meet along a stepped seam through the switch
+        // button (flat on each side, the step hidden behind it).
+        final switchRowTop = halfHeight - switchHalf;
 
         return Container(
-          padding: EdgeInsets.only(top: 30, bottom: 0),
+          padding: EdgeInsets.symmetric(vertical: vPad),
           child: Stack(
             children: [
-              // Input card
-
-              // INPUT side (dark/inverted):
+              // --- UPDATED: Top (input) card ---
               Positioned(
-                top: inputCardTop,
+                top: 0,
                 left: 16,
                 right: 16,
-                height: inputCardHeight,
+                height: halfHeight + switchHalf, // down to the bottom of the switch
                 child: TranslationCard(
                   inverted: true,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
+                  edgeClipper: _SeamClipper(
+                    switchSize: switchSize,
+                    keepTop: true,
+                  ),
                   text: _translation,
+                  siblingText: _inputController.text,
                   fromLang: _rightLanguage,
                   toLang: _leftLanguage,
                   isBusy: _isTranslating,
                   isAudioLoading: _isAudioLoadingInput,
                   isAudioPlaying: _isInputPlaying,
                   isRecording: _isTopRecording,
-                  onExplain: () {
-                    final current = _translation.trim();
-                    if (current.isNotEmpty) {
-                      setState(() => _isTranslating = true);
-                      _showLoaderBeforeModal(() async {
-                        try {
-                          return await _gemini.translate(
-                            current,
-                            _langLabels[_rightLanguage]!,
-                            _langLabels[_leftLanguage]!,
-                            explain: true,
-                            level: _explanationLevel,
-                          );
-                        } catch (_) {
-                          return 'Failed to load explanation.';
-                        } finally {
-                          if (mounted) setState(() => _isTranslating = false);
-                        }
-                      });
-                    }
-                  },
+                  onExplain: openTutor,
                   onCopy: () => _copyText(_translation),
                   onPlay: _playInputSound,
                   onStop: _stopInputSound,
@@ -817,8 +994,9 @@ class _TextPageState extends State<TextPage> {
                             instructionForLang(_rightLanguage),
                             () {}, // Don't reveal (already visible)
                             () {
-                              if (mounted)
+                              if (mounted) {
                                 setState(() => _isTranslating = false);
+                              }
                             },
                           );
                         },
@@ -832,15 +1010,23 @@ class _TextPageState extends State<TextPage> {
                 ),
               ),
 
-              // OUTPUT side (bright):
+              // --- UPDATED: Bottom (output) card ---
               Positioned(
-                top: outputCardTop,
+                top: halfHeight - switchHalf, // up to the top of the switch
                 left: 16,
                 right: 16,
-                height: outputCardHeight,
+                bottom: 0, // reach the bottom edge of the screen
                 child: TranslationCard(
                   inverted: false,
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(18),
+                  ),
+                  edgeClipper: _SeamClipper(
+                    switchSize: switchSize,
+                    keepTop: false,
+                  ),
                   text: _inputController.text,
+                  siblingText: _translation,
                   fromLang: _leftLanguage,
                   toLang: _rightLanguage,
                   isBusy: _isTranslating,
@@ -850,6 +1036,7 @@ class _TextPageState extends State<TextPage> {
                   onCopy: () => _copyText(_inputController.text),
                   onPlay: _playOutputSound,
                   onStop: _stopOutputSound,
+                  onOpenDocument: _openInDocumentMode,
                   onMicTap:
                       () => _openRecordingCustom(
                         from: _leftLanguage,
@@ -880,8 +1067,9 @@ class _TextPageState extends State<TextPage> {
                             instructionForLang(_rightLanguage),
                             () {}, // Don't reveal (already visible)
                             () {
-                              if (mounted)
+                              if (mounted) {
                                 setState(() => _isTranslating = false);
+                              }
                             },
                           );
                         },
@@ -894,29 +1082,8 @@ class _TextPageState extends State<TextPage> {
                       ),
                 ),
               ),
-              // Right overlay
-              Positioned(
-                top: rightOverlayTop,
-                left: constraints.maxWidth / 2 - switchSize / 4,
-                right: 16,
-                child: Container(
-                  height: 70,
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage(
-                        'assets/images/bg-dark.jpg',
-                      ), // For assets
-                      fit: BoxFit.cover,
-                    ),
-                    color: textGrey,
-                    borderRadius: BorderRadius.only(
-                      topRight: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
-                    ),
-                  ),
-                ),
-              ),
-              // 4) Switch + flags row
+
+              // --- NEW: Restyled Language Switcher ---
               Positioned(
                 top: switchRowTop,
                 left: 26,
@@ -925,45 +1092,39 @@ class _TextPageState extends State<TextPage> {
                   height: switchSize,
                   child: Stack(
                     children: [
-                      // Left language toggle
+                      // Left language toggle (dark background)
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 10.0),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _leftLanguage = _leftLanguage.next(
-                                  _rightLanguage,
-                                );
-                              });
-                              autoTranslateOnLanguageChange(leftChanged: true);
-                            },
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ClipRRect(
-                                  child: Image.asset(
-                                    flagAsset(
-                                      _leftLanguage,
-                                      whiteBorder: false,
-                                    ), // White border
-                                    width: flagSize,
-                                    height: flagSize,
-                                    fit: BoxFit.cover,
-                                  ),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _leftLanguage = _nextLanguage(
+                                _leftLanguage,
+                                _rightLanguage,
+                              );
+                            });
+                            autoTranslateOnLanguageChange(leftChanged: true);
+                          },
+                          // No pill: EN sits on the white card, so a
+                          // black-outlined label + black-bordered flag.
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              borderedFlag(_leftLanguage, whiteBorder: false),
+                              const SizedBox(width: 8),
+                              Text(
+                                _leftLanguage.label,
+                                style: GoogleFonts.roboto(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.black,
                                 ),
-                                SizedBox(width: 5),
-                                Image.asset(
-                                  'assets/images/${_leftLanguage.label}-${_leftLanguage.label}.png', // e.g. EN-EN.png
-                                  height: flagSize,
-                                  fit: BoxFit.contain,
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
+
                       // Switch button
                       Center(
                         child: GestureDetector(
@@ -981,7 +1142,6 @@ class _TextPageState extends State<TextPage> {
                               _inputController.text = _translation;
                               _translation = tmpText;
                             });
-                            // No TTS auto play after switch
                             autoTranslateOnLanguageChange(
                               leftChanged: true,
                               playTTS: false,
@@ -991,7 +1151,6 @@ class _TextPageState extends State<TextPage> {
                               playTTS: false,
                             );
                           },
-
                           child: Container(
                             width: switchSize,
                             height: switchSize,
@@ -1013,48 +1172,39 @@ class _TextPageState extends State<TextPage> {
                           ),
                         ),
                       ),
-                      // Right language toggle
+
+                      // Right language toggle (white background)
                       Align(
                         alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(
-                            right: 10.0,
-                            bottom: 10,
-                          ),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _rightLanguage = _rightLanguage.next(
-                                  _leftLanguage,
-                                );
-                              });
-                              autoTranslateOnLanguageChange(leftChanged: false);
-                            },
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _rightLanguage = _nextLanguage(
+                                _rightLanguage,
+                                _leftLanguage,
+                              );
+                            });
+                            autoTranslateOnLanguageChange(leftChanged: false);
+                          },
+                          // HU pill sits on the inverted (top) card, so it is
+                          // rotated 180° to read right-side-up for that speaker.
+                          child: RotatedBox(
+                            quarterTurns: 2,
+                            // No pill: HU sits on the black card, so a
+                            // white-outlined label + white-bordered flag.
+                            // Flag first in code so that, once flipped 180°,
+                            // the Hungarian reader sees the flag first (like DE).
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
-                              textDirection: TextDirection.rtl,
                               children: [
-                                RotatedBox(
-                                  quarterTurns: 2,
-                                  child: ClipRRect(
-                                    child: Image.asset(
-                                      flagAsset(
-                                        _rightLanguage,
-                                        whiteBorder: true,
-                                      ), // White border
-                                      width: flagSize,
-                                      height: flagSize,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 5),
-                                RotatedBox(
-                                  quarterTurns: 2,
-                                  child: Image.asset(
-                                    'assets/images/${_rightLanguage.label}-${_rightLanguage.label}.png',
-                                    height: flagSize,
-                                    fit: BoxFit.contain,
+                                borderedFlag(_rightLanguage, whiteBorder: true),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _rightLanguage.label,
+                                  style: GoogleFonts.roboto(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],
@@ -1066,6 +1216,7 @@ class _TextPageState extends State<TextPage> {
                   ),
                 ),
               ),
+
               // === INLINE RECORDING PANELS (Non-modal) ===
               if (_isTopRecording)
                 Positioned.fill(
@@ -1076,24 +1227,58 @@ class _TextPageState extends State<TextPage> {
                         lang: _rightLanguage,
                         isTopPanel: true,
                         onTranscribed: (txt) async {
-                          if (txt.trim().isNotEmpty) {
-                            setState(() {
-                              _translation = txt;
-                              _isTranslating = true;
-                            });
-
+                          setState(() => _isTopRecording = false);
+                          if (txt.trim().isEmpty) return;
+                          setState(() {
+                            _translation = txt;
+                            _isTranslating = true;
+                          });
+                          try {
                             final result = await translateFinal(
                               txt,
                               _rightLanguage.code,
                               _leftLanguage.code,
                             );
-
+                            if (!mounted) return;
                             setState(() {
                               _inputController.text = result;
                               _isTranslating = false;
                             });
+                            // Auto-play the translation (parallel, non-blocking).
+                            _playOutputSound();
+                          } catch (_) {
+                            if (mounted) {
+                              setState(() => _isTranslating = false);
+                              showFriendlyError(context);
+                            }
                           }
+                        },
+                        onEditRequested: (txt) {
                           setState(() => _isTopRecording = false);
+                          if (txt.trim().isEmpty) return;
+                          showEditTextModal(
+                            context: context,
+                            initialText: txt,
+                            fromLang: _rightLanguage,
+                            toLang: _leftLanguage,
+                            gemini: _gemini,
+                            onEdited: ({
+                              required String edited,
+                              required String translated,
+                            }) {
+                              setState(() {
+                                _translation = edited;
+                                _inputController.text = translated;
+                              });
+                              _playOutputSound();
+                            },
+                            isTextInLanguage:
+                                (text) => isTextInLanguage(
+                                  text,
+                                  _langLabels[_rightLanguage]!,
+                                  _gemini,
+                                ),
+                          );
                         },
                         onCancel: () => setState(() => _isTopRecording = false),
                       ),
@@ -1110,24 +1295,58 @@ class _TextPageState extends State<TextPage> {
                         lang: _leftLanguage,
                         isTopPanel: false,
                         onTranscribed: (txt) async {
-                          if (txt.trim().isNotEmpty) {
-                            setState(() {
-                              _inputController.text = txt;
-                              _isTranslating = true;
-                            });
-
+                          setState(() => _isBottomRecording = false);
+                          if (txt.trim().isEmpty) return;
+                          setState(() {
+                            _inputController.text = txt;
+                            _isTranslating = true;
+                          });
+                          try {
                             final result = await translateFinal(
                               txt,
                               _leftLanguage.code,
                               _rightLanguage.code,
                             );
-
+                            if (!mounted) return;
                             setState(() {
                               _translation = result;
                               _isTranslating = false;
                             });
+                            // Auto-play the translation (parallel, non-blocking).
+                            _playInputSound();
+                          } catch (_) {
+                            if (mounted) {
+                              setState(() => _isTranslating = false);
+                              showFriendlyError(context);
+                            }
                           }
+                        },
+                        onEditRequested: (txt) {
                           setState(() => _isBottomRecording = false);
+                          if (txt.trim().isEmpty) return;
+                          showEditTextModal(
+                            context: context,
+                            initialText: txt,
+                            fromLang: _leftLanguage,
+                            toLang: _rightLanguage,
+                            gemini: _gemini,
+                            onEdited: ({
+                              required String edited,
+                              required String translated,
+                            }) {
+                              setState(() {
+                                _inputController.text = edited;
+                                _translation = translated;
+                              });
+                              _playInputSound();
+                            },
+                            isTextInLanguage:
+                                (text) => isTextInLanguage(
+                                  text,
+                                  _langLabels[_leftLanguage]!,
+                                  _gemini,
+                                ),
+                          );
                         },
                         onCancel:
                             () => setState(() => _isBottomRecording = false),

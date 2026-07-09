@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:forditva/services/gemini_translation_service.dart';
 import 'package:forditva/services/google_speech_to_text_service.dart';
@@ -9,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../flutter_gen/gen_l10n/app_localizations.dart';
 import '../models/language_enum.dart';
 
 typedef OnEditAndTranslate =
@@ -41,26 +43,20 @@ class _EditTextModalState extends State<EditTextModal> {
 
   bool _loading = false;
   bool _isRecording = false;
-  final String _error = '';
-  late RecorderController _recorderController;
   String? _audioPath;
+  // Waveform is driven by the single recorder's amplitude stream (0..1),
+  // avoiding a second microphone recorder that would starve it of audio.
+  final List<double> _levels = [];
+  StreamSubscription<Amplitude>? _ampSub;
   // final String _sttTranscript = ''; // This variable is not used
   final _sttService = GoogleSpeechToTextService(
     dotenv.env['GOOGLE_STT_KEY']!,
   ); // Make sure to pass your key!
   bool _isSttLoading = false;
 
-  double _calculateFontSize(String text) {
-    final len = text.length;
-    if (len <= 30) return 35;
-    if (len >= 100) return 20;
-    return 42 - ((len - 30) * (22 / 70));
-  }
-
   @override
   void initState() {
     super.initState();
-    _recorderController = RecorderController();
     _audioRecorder = AudioRecorder();
     widget.controller.addListener(_moveCursorToEnd);
 
@@ -90,7 +86,7 @@ class _EditTextModalState extends State<EditTextModal> {
 
   @override
   void dispose() {
-    _recorderController.dispose();
+    _ampSub?.cancel();
     widget.controller.removeListener(_moveCursorToEnd);
     _audioRecorder.dispose(); // Dispose of the audio recorder
     super.dispose();
@@ -100,12 +96,12 @@ class _EditTextModalState extends State<EditTextModal> {
     setState(() {
       _isRecording = true;
       _isSttLoading = false;
+      _levels.clear();
     });
     final dir = await getTemporaryDirectory();
     _audioPath =
         '${dir.path}/edit_rec_${DateTime.now().millisecondsSinceEpoch}.wav';
 
-    // Start robust audio recording just like _switchToContinuous()
     await _audioRecorder.start(
       const RecordConfig(
         encoder: AudioEncoder.wav,
@@ -114,12 +110,25 @@ class _EditTextModalState extends State<EditTextModal> {
       ),
       path: _audioPath!,
     );
-    _recorderController.record(); // For waveform visualization
+
+    // Drive the waveform from the same recorder's amplitude (dBFS ~ -45..0),
+    // so no second microphone recorder is needed.
+    _ampSub = _audioRecorder
+        .onAmplitudeChanged(const Duration(milliseconds: 90))
+        .listen((amp) {
+          if (!mounted) return;
+          final norm = ((amp.current + 45) / 45).clamp(0.0, 1.0);
+          setState(() {
+            _levels.add(norm);
+            if (_levels.length > 60) _levels.removeAt(0);
+          });
+        });
   }
 
   Future<void> _onStopTap() async {
     setState(() => _isSttLoading = true);
-    await _recorderController.stop(); // stops waveform
+    await _ampSub?.cancel();
+    _ampSub = null;
     await _audioRecorder.stop(); // stops the actual file recording
 
     final path = _audioPath;
@@ -169,14 +178,66 @@ class _EditTextModalState extends State<EditTextModal> {
         _isSttLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Recording failed.")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.recordingFailed),
+          ),
+        );
       }
     }
   }
 
+  /// Trash: empty the whole text field (Markus: "throw everything to the
+  /// garbage tin"). The red X still cancels/closes the panel.
+  void _clearText() {
+    widget.controller.clear();
+    setState(() {});
+  }
+
+  /// Paste: append clipboard text into the field at the end.
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text?.trim() ?? '';
+    if (pasted.isEmpty) return;
+    final base = widget.controller.text.trim();
+    widget.controller.text = base.isEmpty ? pasted : '$base $pasted';
+    _moveCursorToEnd();
+    setState(() {});
+  }
+
+  /// Compact icon button for the control bar (tight padding so all controls
+  /// fit on one row without overlapping).
+  Widget _iconBtn(String asset, double size, VoidCallback? onTap) {
+    return IconButton(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      constraints: const BoxConstraints(),
+      icon: Image.asset(asset, width: size, height: size),
+      onPressed: onTap,
+    );
+  }
+
+  /// Stop recording and discard the audio without transcribing (the X shown
+  /// while recording).
+  Future<void> _discardRecording() async {
+    await _ampSub?.cancel();
+    _ampSub = null;
+    await _audioRecorder.stop();
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _isSttLoading = false;
+        _levels.clear();
+      });
+    }
+  }
+
   Future<void> _onCheckPressed() async {
+    // Tapping confirm while a sub-recording is still running used to just
+    // discard it and close the panel. Treat confirm as "done recording"
+    // too: stop and append the transcript first, then proceed.
+    if (_isRecording) {
+      await _onStopTap();
+    }
     setState(() => _loading = true);
     final inputText = widget.controller.text.trim();
     bool isValid = await widget.isTextInLanguage(inputText);
@@ -187,12 +248,12 @@ class _EditTextModalState extends State<EditTextModal> {
         context: context,
         builder:
             (ctx) => AlertDialog(
-              title: const Text("Wrong Language"),
-              content: const Text("Please put in the correct language."),
+              title: Text(AppLocalizations.of(context)!.wrongLanguage),
+              content: Text(AppLocalizations.of(context)!.wrongLanguageBody),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text("OK"),
+                  child: Text(AppLocalizations.of(context)!.ok),
                 ),
               ],
             ),
@@ -214,20 +275,31 @@ class _EditTextModalState extends State<EditTextModal> {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final modalHeight = MediaQuery.of(context).size.height / 1.8;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    // Size against the space actually left above the keyboard, not the full
+    // screen height, so the card never overlaps it once the keyboard is up.
+    final availableHeight = MediaQuery.of(context).size.height - keyboardHeight;
+    // Fill the space above the keyboard, minus the 25px top offset below and
+    // a 20px breathing gap at the bottom — was leaving roughly half the
+    // available height as dead grey space above the keyboard.
+    final modalHeight = availableHeight - 25 - 20;
 
     return SafeArea(
       child: Material(
         color: Colors.transparent,
-        child: Align(
+        child: Padding(
+          // Push the whole card up above the keyboard as it rises.
+          padding: EdgeInsets.only(bottom: keyboardHeight),
+          child: Align(
           alignment: Alignment.topCenter,
           child: Padding(
             padding: const EdgeInsets.only(top: 25),
             child: Stack(
               children: [
-                // White modal
+                // White modal — inset from the screen edges so it reads as a
+                // centered card over the dimmed conversation, not full-screen.
                 Container(
-                  width: width,
+                  width: width - 32,
                   height: modalHeight,
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -235,117 +307,116 @@ class _EditTextModalState extends State<EditTextModal> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Stack(
+                    fit: StackFit.expand,
                     children: [
                       // Text input
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 62),
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 70),
                         child: TextField(
                           controller: widget.controller,
                           autofocus: true,
+                          // Fixed font size that never shrinks; the field fills
+                          // the card and scrolls when the text gets long, so no
+                          // text is hidden when the keyboard is toggled (Markus).
+                          expands: true,
+                          minLines: null,
                           maxLines: null,
+                          textAlignVertical: TextAlignVertical.top,
                           style: GoogleFonts.robotoCondensed(
-                            fontSize: _calculateFontSize(
-                              widget.controller.text,
-                            ),
+                            fontSize: 26,
                             fontWeight: FontWeight.w500,
-                            height: 1,
+                            height: 1.15,
                           ),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             border: InputBorder.none,
-                            hintText: 'Edit text...',
+                            hintText: AppLocalizations.of(context)!.editTextHint,
                             isDense: true,
                           ),
-                          onChanged: (_) {
-                            // setState(() {}); // No need to call setState here, _moveCursorToEnd handles it implicitly for selection
-                          },
                         ),
                       ),
-                      // Check and Close at bottom inside box (corners)
+                      // All edit controls on ONE row so nothing overlaps:
+                      // cancel, clear, paste, waveform (while recording),
+                      // mic/stop, confirm.
                       Positioned(
-                        left: 0,
-                        right: 0,
+                        left: 8,
+                        right: 8,
                         bottom: 10,
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            IconButton(
-                              icon: Image.asset(
-                                'assets/images/close.png',
-                                width: 38,
-                                height: 38,
-                              ),
-                              onPressed:
-                                  _loading
-                                      ? null
-                                      : () => Navigator.of(context).maybePop(),
+                            _iconBtn(
+                              'assets/images/close_red.png',
+                              48,
+                              _loading
+                                  ? null
+                                  : () => Navigator.of(context).maybePop(),
                             ),
-                            IconButton(
-                              icon: Image.asset(
-                                'assets/images/check.png',
-                                width: 38,
-                                height: 38,
-                              ),
-                              onPressed: _loading ? null : _onCheckPressed,
+                            _iconBtn(
+                              'assets/png24/black/b_garbage.png',
+                              30,
+                              _loading ? null : _clearText,
+                            ),
+                            _iconBtn(
+                              'assets/png24/black/b_paste.png',
+                              30,
+                              _loading ? null : _pasteFromClipboard,
+                            ),
+                            // Middle fills all remaining width: mic centred
+                            // when idle; X + tick + a wide waveform (filling the
+                            // rest) when recording.
+                            Expanded(
+                              child:
+                                  _isSttLoading
+                                      ? const Center(
+                                        child: SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                      : _isRecording
+                                      ? Row(
+                                        children: [
+                                          _iconBtn(
+                                            'assets/png24/black/b_close.png',
+                                            30,
+                                            _discardRecording,
+                                          ),
+                                          _iconBtn(
+                                            'assets/png24/black/b_check.png',
+                                            30,
+                                            _onStopTap,
+                                          ),
+                                          Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                left: 6,
+                                                right: 10,
+                                              ),
+                                              child: _AmpWaveform(
+                                                levels: _levels,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                      : Center(
+                                        child: _iconBtn(
+                                          'assets/images/b_microphone.png',
+                                          30,
+                                          _onMicTap,
+                                        ),
+                                      ),
+                            ),
+                            _iconBtn(
+                              'assets/images/check_green.png',
+                              48,
+                              _loading ? null : _onCheckPressed,
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                // Mic and audio wave at very bottom, centered side by side
-                Positioned(
-                  bottom: 10,
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Audio waveform (left)
-                      SizedBox(
-                        width: 90,
-                        height: 50,
-                        child:
-                            _isRecording
-                                ? AudioWaveforms(
-                                  enableGesture: false,
-                                  size: const Size(90, 50),
-                                  recorderController: _recorderController,
-                                  waveStyle: const WaveStyle(
-                                    waveColor: Colors.green,
-                                    showMiddleLine: false,
-                                    extendWaveform: true,
-                                    spacing: 4,
-                                    scaleFactor: 60,
-                                  ),
-                                )
-                                : _StaticWave(),
-                      ),
-                      const SizedBox(width: 1),
-                      // Mic or stop button (right)
-                      if (!_isSttLoading)
-                        GestureDetector(
-                          onTap: _isRecording ? _onStopTap : _onMicTap,
-                          child:
-                              _isRecording
-                                  ? Image.asset(
-                                    'assets/images/stoprec.png',
-                                    width: 50,
-                                    height: 50,
-                                  )
-                                  : const Icon(
-                                    // Added const for better performance
-                                    Icons.mic,
-                                    color: Colors.black,
-                                    size: 50,
-                                  ),
-                        ),
-                      if (_isSttLoading)
-                        const SizedBox(
-                          width: 50,
-                          height: 50,
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
                     ],
                   ),
                 ),
@@ -360,39 +431,50 @@ class _EditTextModalState extends State<EditTextModal> {
             ),
           ),
         ),
+        ),
       ),
     );
   }
 }
 
-// Custom static wave (green bars)
-class _StaticWave extends StatelessWidget {
+
+/// Full-width grey waveform for the edit panel, driven by the recorder's
+/// amplitude levels (0..1). Fills whatever width it is given.
+class _AmpWaveform extends StatelessWidget {
+  final List<double> levels;
+  const _AmpWaveform({required this.levels});
+
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(90, 50), painter: _GreenWavePainter());
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const barW = 4.0;
+        const gap = 4.0;
+        const maxBar = 36.0;
+        final count = (constraints.maxWidth / (barW + gap)).floor().clamp(1, 200);
+        final bars = List<double>.generate(count, (i) {
+          final idx = levels.length - count + i;
+          final v = idx >= 0 ? levels[idx] : 0.0;
+          return 4 + v * (maxBar - 4);
+        });
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children:
+              bars
+                  .map(
+                    (h) => Container(
+                      width: barW,
+                      height: h,
+                      margin: const EdgeInsets.symmetric(horizontal: gap / 2),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade700,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  )
+                  .toList(),
+        );
+      },
+    );
   }
-}
-
-class _GreenWavePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = Colors.green
-          ..strokeWidth = 8
-          ..strokeCap = StrokeCap.round;
-
-    for (int i = 0; i < 6; i++) {
-      final dx = 8 + i * 14.0;
-      final waveHeight = (i % 2 == 0) ? 20.0 : 35.0;
-      canvas.drawLine(
-        Offset(dx, size.height / 2 - waveHeight / 2),
-        Offset(dx, size.height / 2 + waveHeight / 2),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

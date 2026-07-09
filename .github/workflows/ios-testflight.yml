@@ -1,0 +1,346 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/ios-testflight.yml'
+
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    runs-on: macos-26
+    timeout-minutes: 120
+
+    env:
+      FLUTTER_VERSION: '3.41.1'
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+          cache-key: flutter-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_PRIVATE_KEY APPLE_TEAM_ID IOS_BUNDLE_ID; do
+            if [ -z "${!v:-}" ]; then
+              echo "ERROR: Missing required secret: $v"
+              exit 1
+            fi
+          done
+
+      - name: Provision signing certificate and profile
+        shell: python3 {0}
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+          GITHUB_ENV: ${{ github.env }}
+        run: |
+          import json, base64, time, subprocess, sys, os, shutil
+          from urllib.request import urlopen, Request
+          from urllib.error import HTTPError
+
+          KEY_ID     = os.environ["APP_STORE_CONNECT_KEY_ID"]
+          ISSUER_ID  = os.environ["APP_STORE_CONNECT_ISSUER_ID"]
+          PRIV_KEY   = os.environ["APP_STORE_CONNECT_PRIVATE_KEY"]
+          BUNDLE_ID  = os.environ["IOS_BUNDLE_ID"]
+          TEAM_ID    = os.environ["APPLE_TEAM_ID"]
+          TMP        = os.environ.get("RUNNER_TEMP", "/tmp")
+          GITHUB_ENV = os.environ.get("GITHUB_ENV", "/dev/null")
+
+          KEY_PATH   = f"{TMP}/asc_api.p8"
+          DIST_KEY   = f"{TMP}/dist.key"
+          DIST_CSR   = f"{TMP}/dist.csr"
+          DIST_CER   = f"{TMP}/dist.cer"
+          DIST_PEM   = f"{TMP}/dist.pem"
+          DIST_P12   = f"{TMP}/dist.p12"
+          P12_PASS   = "ci_forditva_signing"
+          PROF_PATH  = f"{TMP}/dist.mobileprovision"
+          KC_PATH    = f"{TMP}/signing.keychain-db"
+          KC_PASS    = "ci_kc_pass_forditva"
+
+          def run(*args, **kw):
+              kw.setdefault("check", True)
+              kw.setdefault("capture_output", True)
+              return subprocess.run(list(args), **kw)
+
+          def b64url(data):
+              if isinstance(data, str): data = data.encode()
+              return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+          def der_to_raw_sig(der):
+              i = 0
+              if der[i] != 0x30:
+                  raise ValueError("Not a DER SEQUENCE")
+              i += 1
+              if der[i] & 0x80:
+                  i += (der[i] & 0x7F) + 1
+              else:
+                  i += 1
+              def read_int(buf, pos):
+                  assert buf[pos] == 0x02, "Expected INTEGER tag"
+                  pos += 1
+                  ln = buf[pos]; pos += 1
+                  val = buf[pos:pos+ln]; pos += ln
+                  return val.lstrip(b'\x00').rjust(32, b'\x00'), pos
+              r, i = read_int(der, i)
+              s, _ = read_int(der, i)
+              return r + s
+
+          def make_jwt():
+              now = int(time.time())
+              hdr = b64url(json.dumps({"alg":"ES256","kid":KEY_ID,"typ":"JWT"}))
+              pay = b64url(json.dumps({"iss":ISSUER_ID,"iat":now,"exp":now+500,"aud":"appstoreconnect-v1"}))
+              si  = f"{hdr}.{pay}".encode()
+              r   = run("openssl","dgst","-sha256","-sign",KEY_PATH, input=si, check=False)
+              if r.returncode != 0:
+                  sys.exit(f"JWT sign error: {r.stderr.decode()}")
+              raw_sig = der_to_raw_sig(r.stdout)
+              return f"{hdr}.{pay}.{b64url(raw_sig)}"
+
+          def api(method, path, body=None):
+              jwt  = make_jwt()
+              url  = f"https://api.appstoreconnect.apple.com{path}"
+              hdrs = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
+              data = json.dumps(body).encode() if body else None
+              req  = Request(url, data=data, headers=hdrs, method=method)
+              try:
+                  with urlopen(req) as r:
+                      raw = r.read()
+                      return json.loads(raw) if raw else {}
+              except HTTPError as e:
+                  txt = e.read().decode()
+                  print(f"  API {method} {path} -> HTTP {e.code}")
+                  print(f"  Response: {txt[:500]}")
+                  raise
+
+          with open(KEY_PATH, "w") as f: f.write(PRIV_KEY)
+          os.chmod(KEY_PATH, 0o600)
+          asc_keys = os.path.expanduser("~/.appstoreconnect/private_keys")
+          os.makedirs(asc_keys, exist_ok=True)
+          shutil.copy(KEY_PATH, f"{asc_keys}/AuthKey_{KEY_ID}.p8")
+          print(f"API key written: {KEY_PATH}")
+
+          DIST_CSR_PEM = f"{TMP}/dist_pem.csr"
+          run("openssl","genrsa","-out",DIST_KEY,"2048")
+          run("openssl","req","-new","-key",DIST_KEY,"-out",DIST_CSR_PEM,
+              "-subj",f"/CN=iPhone Distribution/O={TEAM_ID}/C=US")
+          run("openssl","req","-in",DIST_CSR_PEM,"-outform","DER","-out",DIST_CSR)
+          with open(DIST_CSR,"rb") as f:
+              csr_b64 = base64.b64encode(f.read()).decode()
+          print("CSR generated.")
+
+          print("Creating iOS Distribution certificate via ASC API...")
+          cert_id = cert_content = None
+          try:
+              resp = api("POST", "/v1/certificates", {"data":{"type":"certificates","attributes":{
+                  "certificateType":"IOS_DISTRIBUTION","csrContent":csr_b64}}})
+              cert_id      = resp["data"]["id"]
+              cert_content = resp["data"]["attributes"]["certificateContent"]
+              print(f"Certificate created: {cert_id}")
+          except HTTPError as e:
+              if e.code in (409, 422):
+                  print("  Certificate conflict - revoking ALL existing iOS Distribution certs...")
+                  existing = api("GET", "/v1/certificates?filter%5BcertificateType%5D=IOS_DISTRIBUTION&limit=200")
+                  certs_to_revoke = existing.get("data", [])
+                  if not certs_to_revoke:
+                      sys.exit("No certificates to revoke and cannot create a new one.")
+                  for cert in certs_to_revoke:
+                      old_id = cert["id"]
+                      api("DELETE", f"/v1/certificates/{old_id}")
+                      print(f"  Revoked {old_id}.")
+                  print(f"  Revoked {len(certs_to_revoke)} cert(s). Waiting 5s...")
+                  time.sleep(5)
+                  resp = api("POST", "/v1/certificates", {"data":{"type":"certificates","attributes":{
+                      "certificateType":"IOS_DISTRIBUTION","csrContent":csr_b64}}})
+                  cert_id      = resp["data"]["id"]
+                  cert_content = resp["data"]["attributes"]["certificateContent"]
+                  print(f"Certificate created: {cert_id}")
+              elif e.code == 403:
+                  print("PERMISSION ERROR: API key lacks access to create certificates.")
+                  print("In App Store Connect -> Users & Access -> Integrations -> API Keys,")
+                  print(f"give key {KEY_ID} the Admin or Developer role.")
+                  sys.exit(1)
+              else:
+                  sys.exit(f"Certificate creation failed: HTTP {e.code}")
+
+          with open(DIST_CER,"wb") as f: f.write(base64.b64decode(cert_content))
+          run("openssl","x509","-inform","DER","-in",DIST_CER,"-out",DIST_PEM)
+          run("openssl","pkcs12","-export","-inkey",DIST_KEY,"-in",DIST_PEM,
+              "-out",DIST_P12,"-passout",f"pass:{P12_PASS}")
+
+          run("security","create-keychain","-p",KC_PASS,KC_PATH)
+          run("security","set-keychain-settings","-lut","21600",KC_PATH)
+          run("security","unlock-keychain","-p",KC_PASS,KC_PATH)
+          run("security","import",DIST_P12,"-P",P12_PASS,"-A","-t","cert","-f","pkcs12","-k",KC_PATH)
+          run("security","list-keychain","-d","user","-s",KC_PATH)
+          print("Certificate imported into keychain.")
+
+          print(f"Looking up bundle ID: {BUNDLE_ID}")
+          b_resp = api("GET", f"/v1/bundleIds?filter%5Bidentifier%5D={BUNDLE_ID}&filter%5Bplatform%5D=IOS")
+          if not b_resp.get("data"):
+              sys.exit(f"Bundle ID {BUNDLE_ID} not found in App Store Connect. Register it first.")
+          bundle_rid = b_resp["data"][0]["id"]
+          print(f"Bundle resource ID: {bundle_rid}")
+
+          print("Creating App Store provisioning profile...")
+          import datetime, uuid
+          prof_name = f"Forditva CI {datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
+          try:
+              p_resp = api("POST", "/v1/profiles", {"data":{"type":"profiles","attributes":{
+                  "name": prof_name, "profileType":"IOS_APP_STORE"},
+                  "relationships":{
+                      "bundleId":{"data":{"type":"bundleIds","id":bundle_rid}},
+                      "certificates":{"data":[{"type":"certificates","id":cert_id}]}
+                  }}})
+              prof_data = p_resp["data"]
+          except HTTPError as e:
+              if e.code in (409, 422):
+                  print("  Profile conflict - listing recent App Store profiles...")
+                  p_list = api("GET", "/v1/profiles?filter%5BprofileType%5D=IOS_APP_STORE&sort=-id&limit=10")
+                  if not p_list.get("data"):
+                      sys.exit("Could not create or find a provisioning profile.")
+                  prof_data = p_list["data"][0]
+              else:
+                  sys.exit(f"Profile creation failed: HTTP {e.code}")
+
+          prof_content = prof_data["attributes"]["profileContent"]
+          with open(PROF_PATH,"wb") as f: f.write(base64.b64decode(prof_content))
+
+          r = run("security","cms","-D","-i",PROF_PATH, capture_output=True, check=False)
+          plist_out = r.stdout
+          r2 = subprocess.run(["plutil","-extract","UUID","raw","-"],
+                              input=plist_out, capture_output=True)
+          pp_uuid = r2.stdout.decode().strip()
+          profiles_dir = os.path.expanduser("~/Library/MobileDevice/Provisioning Profiles")
+          os.makedirs(profiles_dir, exist_ok=True)
+          shutil.copy(PROF_PATH, f"{profiles_dir}/{pp_uuid}.mobileprovision")
+          print(f"Provisioning profile installed: {pp_uuid}")
+
+          login_kc = os.path.expanduser("~/Library/Keychains/login.keychain-db")
+          run("security","list-keychain","-d","user","-s",KC_PATH,login_kc)
+
+          with open(GITHUB_ENV,"a") as f:
+              f.write(f"PP_UUID={pp_uuid}\n")
+              f.write(f"KC_PATH={KC_PATH}\n")
+              f.write(f"CERT_ID={cert_id}\n")
+          print(f"Signing ready - cert={cert_id}  profile={pp_uuid}")
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Install iOS dependencies
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Write ExportOptions.plist and configure signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${PP_UUID}</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+          cat >> ios/Flutter/Release.xcconfig <<XCEOF
+
+          // CI manual signing
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = iPhone Distribution
+          DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
+          PROVISIONING_PROFILE = ${PP_UUID}
+          OTHER_CODE_SIGN_FLAGS = --keychain ${KC_PATH}
+          IPHONEOS_DEPLOYMENT_TARGET = 13.0
+          XCEOF
+
+      - name: Build iOS IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload IPA to TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "IPA not found in build/ios/ipa"
+            ls -la build/ios/ipa/ || true
+            exit 1
+          fi
+          echo "Uploading: $IPA_PATH"
+          xcrun altool \
+            --upload-app \
+            -f "$IPA_PATH" \
+            --type ios \
+            --apiKey "${APP_STORE_CONNECT_KEY_ID}" \
+            --apiIssuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+            --verbose || \
+          xcrun iTMSTransporter \
+            -m upload \
+            -assetFile "$IPA_PATH" \
+            -apiKey "${APP_STORE_CONNECT_KEY_ID}" \
+            -apiIssuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+            -v informational
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            build/ios/ipa/*.ipa
+            ios/ExportOptions.plist
+          if-no-files-found: warn

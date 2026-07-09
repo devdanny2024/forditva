@@ -21,6 +21,16 @@ String _sttLocale(Language lang) {
       return 'de_DE';
     case Language.english:
       return 'en_US';
+    case Language.dutch:
+      return 'nl_NL';
+    case Language.french:
+      return 'fr_FR';
+    case Language.spanish:
+      return 'es_ES';
+    case Language.russian:
+      return 'ru_RU';
+    case Language.italian:
+      return 'it_IT';
   }
 }
 
@@ -32,6 +42,16 @@ String _googleLocale(Language lang) {
       return 'de-DE';
     case Language.english:
       return 'en-US';
+    case Language.dutch:
+      return 'nl-NL';
+    case Language.french:
+      return 'fr-FR';
+    case Language.spanish:
+      return 'es-ES';
+    case Language.russian:
+      return 'ru-RU';
+    case Language.italian:
+      return 'it-IT';
   }
 }
 
