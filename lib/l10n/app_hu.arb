@@ -68,5 +68,5 @@
   "imagePickerLine2": " AZ ESZKÖZÖDRŐL.",
   "cropInstruction": "Rajzold körbe ujjaddal a kívánt területet",
   "errorTitle": "Kapcsolódási probléma",
-  "errorMessage": "Jelenleg nem érjük el a fordítási szolgáltatást. Kérjük, ellenőrizze az internetkapcsolatot, és próbálja újra."
+  "errorMessage": "Nem értük el a fordítóprogramot. Kérlek, ellenőrizd az internetkapcsolatodat, és próbáld meg újra."
 }
