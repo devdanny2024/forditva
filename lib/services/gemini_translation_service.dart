@@ -10,7 +10,7 @@ class GeminiTranslator {
     : _model = GenerativeModel(
         // flash-lite is markedly faster and does little/no "thinking",
         // which is what was adding latency to every translation.
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-flash-lite-latest',
         apiKey: dotenv.env['GEMINI_API_KEY']!,
       );
 
@@ -43,7 +43,7 @@ class GeminiTranslator {
       // it deterministic, and the raw text is sent as the user message with no
       // surrounding quotes — all to stop flash-lite "chatting" or adding quotes.
       final translateModel = GenerativeModel(
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-flash-lite-latest',
         apiKey: dotenv.env['GEMINI_API_KEY']!,
         systemInstruction: Content.system('''
 You are a precise literal translation engine.

@@ -16,7 +16,7 @@ class GeminiImageService {
   GeminiImageService();
 
   String get _apiKey => dotenv.env['GEMINI_API_KEY']!;
-  static const _model = 'gemini-2.5-flash';
+  static const _model = 'gemini-flash-latest';
   String get _endpoint =>
       'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey';
 
