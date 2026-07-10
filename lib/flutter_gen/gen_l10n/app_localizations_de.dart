@@ -250,7 +250,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get wiuEmptyBody =>
-      'Dein WIU-Guthaben ist leer. Bitte lade auf wir-in-ungarn.hu auf, um weiter übersetzen zu können.';
+      'Dein WIU-Guthaben ist leer. Bitte lade es auf wir-in-ungarn.hu auf, um weiter zu übersetzen.';
 
   @override
   String get wiuLowBody =>

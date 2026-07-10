@@ -244,11 +244,11 @@ class AppLocalizationsHu extends AppLocalizations {
       'Nem értük el a fordítóprogramot. Kérlek, ellenőrizd az internetkapcsolatodat, és próbáld meg újra.';
 
   @override
-  String get wiuEmptyTitle => 'Elfogyott az egyenleg';
+  String get wiuEmptyTitle => 'Nincs egyenleg';
 
   @override
   String get wiuEmptyBody =>
-      'Elfogyott a WIU egyenleged. Kérlek, tölts fel a wir-in-ungarn.hu oldalon, hogy tovább fordíthass.';
+      'Kiürült a WIU egyenleged. Kérlek, töltsd fel a wir-in-ungarn.hu oldalon, hogy tovább tudj fordítani.';
 
   @override
   String get wiuLowBody =>
