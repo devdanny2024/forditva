@@ -223,6 +223,13 @@ class _RecordingModalState extends State<RecordingModal> {
   bool _restarting = false;
   Future<void> _restartListening() async {
     if (_restarting || !mounted || !_isRecording) return;
+    // Restarting mid-utterance is only meant to keep infinity mode listening
+    // through long pauses. In normal mode, once real words have already been
+    // recognized, restarting re-hears trailing/buffered audio and duplicates
+    // the transcript (Markus: sentence showing twice). Safe to restart only
+    // if continuous mode is on, or nothing has been captured yet (a stalled,
+    // silent start).
+    if (!_continuousMode && _transcript.trim().isNotEmpty) return;
     _restarting = true;
     _silenceTimer?.cancel();
     _stallTimer?.cancel();

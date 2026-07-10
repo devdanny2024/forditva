@@ -55,5 +55,7 @@
 	<string>Forditva uses the camera to capture text from images for translation.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Forditva accesses your photos to translate text from images you choose.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
