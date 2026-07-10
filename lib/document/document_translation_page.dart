@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +14,7 @@ import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:forditva/services/google_speech_to_text_service.dart';
 import 'package:forditva/flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:forditva/widgets/amp_waveform.dart';
 import 'package:forditva/widgets/copied_toast.dart';
 import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/utils/utils.dart';
@@ -53,9 +53,14 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   late StreamSubscription<bool> _keyboardSubscription;
   bool _keyboardIsVisible = false;
   bool _isRecording = false;
-  late final RecorderController _recorderController;
   late final AudioRecorder _audioRecorder;
   String? _recordPath;
+  // Waveform is driven by the same recorder's amplitude stream (0..1), same
+  // as the tuned edit-text panel — avoids a second microphone recorder that
+  // would starve it of audio (Markus, 2026-07-10: "use exactly the same
+  // logic like we have in the Edit panel").
+  final List<double> _levels = [];
+  StreamSubscription<Amplitude>? _ampSub;
   bool _isInputLoading = false;
   final _ttsService = GeminiTtsService();
   ap.AudioPlayer? _ttsAudioPlayer; // 👈 audio player instance
@@ -221,7 +226,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _rightLang = DocumentTranslationState.rightLang ?? pair[1];
     DocumentTranslationState.leftLang = null;
     DocumentTranslationState.rightLang = null;
-    _recorderController = RecorderController();
     _audioRecorder = AudioRecorder();
     _inputController = TextEditingController(
       text: DocumentTranslationState.inputText,
@@ -277,7 +281,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
   @override
   void dispose() {
-    _recorderController.dispose();
+    _ampSub?.cancel();
     _inputFocusNode.dispose();
 
     _db.close(); // ← close the DB when the page is torn down
@@ -293,7 +297,10 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   Future<void> _startRecording() async {
-    setState(() => _isRecording = true);
+    setState(() {
+      _isRecording = true;
+      _levels.clear();
+    });
 
     final dir = await getTemporaryDirectory();
     _recordPath =
@@ -309,8 +316,32 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       path: _recordPath!,
     );
 
-    // Start waveform visualization
-    _recorderController.record();
+    // Drive the waveform from the same recorder's amplitude (dBFS ~ -45..0),
+    // so no second microphone recorder is needed.
+    _ampSub = _audioRecorder
+        .onAmplitudeChanged(const Duration(milliseconds: 90))
+        .listen((amp) {
+          if (!mounted) return;
+          final norm = ((amp.current + 45) / 45).clamp(0.0, 1.0);
+          setState(() {
+            _levels.add(norm);
+            if (_levels.length > 60) _levels.removeAt(0);
+          });
+        });
+  }
+
+  /// Stop recording and discard the audio without transcribing (the red X
+  /// shown while recording, matching the edit-text panel).
+  Future<void> _discardRecording() async {
+    await _ampSub?.cancel();
+    _ampSub = null;
+    await _audioRecorder.stop();
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _levels.clear();
+      });
+    }
   }
 
   Future<void> _stopRecording() async {
@@ -319,10 +350,11 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       _isInputLoading = true;
     });
 
-    await _recorderController.stop();
+    await _ampSub?.cancel();
+    _ampSub = null;
     if (_recordPath == null) return;
 
-    await _audioRecorder.stop(); // Optional if also using AudioRecorder in doc
+    await _audioRecorder.stop();
 
     final file = File(_recordPath!);
     if (!file.existsSync()) {
@@ -852,6 +884,54 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     );
   }
 
+  /// The mic/record control: a single mic icon when idle, or a discard (X) +
+  /// confirm (check) pair plus a wide waveform filling the remaining space
+  /// while recording — same layout and icons as the tuned edit-text panel
+  /// (Markus, 2026-07-10: "use exactly the same logic like we have in the
+  /// Edit panel"; 5px between icons, 20px before the waveform).
+  Widget _recordingControl(double iconSize) {
+    if (!_isRecording) {
+      return GestureDetector(
+        onTap: () async {
+          if (await Permission.microphone.request().isGranted) {
+            await _startRecording();
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Microphone permission denied")),
+            );
+          }
+        },
+        child: Image.asset(
+          'assets/images/microphone-white-border.png',
+          width: iconSize,
+        ),
+      );
+    }
+    return Expanded(
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _discardRecording,
+            child: Image.asset(
+              'assets/png24/black/b_close.png',
+              width: iconSize,
+            ),
+          ),
+          const SizedBox(width: 5),
+          GestureDetector(
+            onTap: _stopRecording,
+            child: Image.asset(
+              'assets/png24/black/b_check.png',
+              width: iconSize,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(child: AmpWaveform(levels: _levels)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTopInputCard() {
     return Container(
       decoration: BoxDecoration(
@@ -991,104 +1071,66 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          // Trash — clears the input box.
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _inputController.clear();
-                                _translatedText = '';
-                                DocumentTranslationState.inputText = '';
-                                DocumentTranslationState.translatedText = '';
-                              });
-                            },
-                            child: Image.asset(
-                              'assets/png24/black/b_garbage.png',
-                              width: iconSize,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: () async {
-                              final data = await Clipboard.getData(
-                                'text/plain',
-                              );
-                              if (data?.text != null &&
-                                  data!.text!.trim().isNotEmpty) {
+                      // Expanded so the recording waveform (inside
+                      // _recordingControl) has room to fill the space.
+                      Expanded(
+                        child: Row(
+                          children: [
+                            // Trash — clears the input box.
+                            GestureDetector(
+                              onTap: () {
                                 setState(() {
-                                  // Unfocused: replace the whole text box.
-                                  final pasted = data.text!.trim();
-                                  _inputController.text = pasted;
-                                  _inputController
-                                      .selection = TextSelection.fromPosition(
-                                    TextPosition(offset: pasted.length),
-                                  );
+                                  _inputController.clear();
+                                  _translatedText = '';
+                                  DocumentTranslationState.inputText = '';
+                                  DocumentTranslationState.translatedText = '';
                                 });
-                              }
-                            },
-                            child: Image.asset(
-                              'assets/images/paste.png',
-                              width: iconSize,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Edit — focuses the input field (opens the keyboard).
-                          GestureDetector(
-                            onTap:
-                                () => FocusScope.of(
-                                  context,
-                                ).requestFocus(_inputFocusNode),
-                            child: Image.asset(
-                              'assets/png24/black/b_edit.png',
-                              width: iconSize,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: () async {
-                              if (_isRecording) {
-                                await _stopRecording();
-                              } else {
-                                if (await Permission.microphone
-                                    .request()
-                                    .isGranted) {
-                                  await _startRecording();
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Microphone permission denied",
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                            child: Image.asset(
-                              _isRecording
-                                  ? 'assets/images/stoprec.png'
-                                  : 'assets/images/microphone-white-border.png',
-                              width: iconSize,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (_isRecording)
-                            SizedBox(
-                              width: 90,
-                              height: 20,
-                              child: AudioWaveforms(
-                                enableGesture: false,
-                                size: const Size(90, 20),
-                                recorderController: _recorderController,
-                                waveStyle: const WaveStyle(
-                                  waveColor: navGreen,
-                                  showMiddleLine: false,
-                                  extendWaveform: true,
-                                ),
+                              },
+                              child: Image.asset(
+                                'assets/png24/black/b_garbage.png',
+                                width: iconSize,
                               ),
                             ),
-                        ],
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: () async {
+                                final data = await Clipboard.getData(
+                                  'text/plain',
+                                );
+                                if (data?.text != null &&
+                                    data!.text!.trim().isNotEmpty) {
+                                  setState(() {
+                                    // Unfocused: replace the whole text box.
+                                    final pasted = data.text!.trim();
+                                    _inputController.text = pasted;
+                                    _inputController
+                                        .selection = TextSelection.fromPosition(
+                                      TextPosition(offset: pasted.length),
+                                    );
+                                  });
+                                }
+                              },
+                              child: Image.asset(
+                                'assets/images/paste.png',
+                                width: iconSize,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Edit — focuses the input field (opens the keyboard).
+                            GestureDetector(
+                              onTap:
+                                  () => FocusScope.of(
+                                    context,
+                                  ).requestFocus(_inputFocusNode),
+                              child: Image.asset(
+                                'assets/png24/black/b_edit.png',
+                                width: iconSize,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            _recordingControl(iconSize),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1107,112 +1149,68 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // Group ❌ | 📋 | 🎙 with spacing
-                        Row(
-                          children: [
-                            // ❌ Cancel icon — just dismiss the keyboard,
-                            // keep the text (does NOT delete).
-                            GestureDetector(
-                              onTap: () {
-                                FocusScope.of(context).unfocus();
-                              },
-                              child: Image.asset(
-                                'assets/images/close.png',
-                                width: iconSize,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-
-                            // 📋 Paste icon
-                            GestureDetector(
-                              onTap: () async {
-                                final data = await Clipboard.getData(
-                                  'text/plain',
-                                );
-                                if (data?.text != null &&
-                                    data!.text!.trim().isNotEmpty) {
-                                  setState(() {
-                                    // Focused: insert at the cursor position.
-                                    final pasted = data.text!.trim();
-                                    final text = _inputController.text;
-                                    final sel = _inputController.selection;
-                                    final start =
-                                        sel.start >= 0 ? sel.start : text.length;
-                                    final end =
-                                        sel.end >= 0 ? sel.end : text.length;
-                                    final updated = text.replaceRange(
-                                      start,
-                                      end,
-                                      pasted,
-                                    );
-                                    _inputController.text = updated;
-                                    _inputController
-                                        .selection = TextSelection.collapsed(
-                                      offset: start + pasted.length,
-                                    );
-                                  });
-                                }
-                              },
-                              child: Image.asset(
-                                'assets/images/paste.png',
-                                width: iconSize,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-
-                            // 🎙 Mic icon with waveform
-                            Row(
-                              children: [
-                                GestureDetector(
-                                  onTap: () async {
-                                    if (_isRecording) {
-                                      await _stopRecording();
-                                    } else {
-                                      if (await Permission.microphone
-                                          .request()
-                                          .isGranted) {
-                                        await _startRecording();
-                                      } else {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              "Microphone permission denied",
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                                  child: Image.asset(
-                                    _isRecording
-                                        ? 'assets/images/stoprec.png'
-                                        : 'assets/images/microphone-white-border.png',
-                                    width: iconSize,
-                                  ),
+                        // Group ❌ | 📋 | 🎙 with spacing. Expanded so the
+                        // recording waveform (inside _recordingControl) has
+                        // room to fill the space up to the check icon.
+                        Expanded(
+                          child: Row(
+                            children: [
+                              // ❌ Cancel icon — just dismiss the keyboard,
+                              // keep the text (does NOT delete).
+                              GestureDetector(
+                                onTap: () {
+                                  FocusScope.of(context).unfocus();
+                                },
+                                child: Image.asset(
+                                  'assets/images/close.png',
+                                  width: iconSize,
                                 ),
+                              ),
+                              const SizedBox(width: 10),
 
-                                const SizedBox(width: 8),
+                              // 📋 Paste icon
+                              GestureDetector(
+                                onTap: () async {
+                                  final data = await Clipboard.getData(
+                                    'text/plain',
+                                  );
+                                  if (data?.text != null &&
+                                      data!.text!.trim().isNotEmpty) {
+                                    setState(() {
+                                      // Focused: insert at the cursor position.
+                                      final pasted = data.text!.trim();
+                                      final text = _inputController.text;
+                                      final sel = _inputController.selection;
+                                      final start =
+                                          sel.start >= 0
+                                              ? sel.start
+                                              : text.length;
+                                      final end =
+                                          sel.end >= 0 ? sel.end : text.length;
+                                      final updated = text.replaceRange(
+                                        start,
+                                        end,
+                                        pasted,
+                                      );
+                                      _inputController.text = updated;
+                                      _inputController
+                                          .selection = TextSelection.collapsed(
+                                        offset: start + pasted.length,
+                                      );
+                                    });
+                                  }
+                                },
+                                child: Image.asset(
+                                  'assets/images/paste.png',
+                                  width: iconSize,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
 
-                                if (_isRecording)
-                                  SizedBox(
-                                    width: 50,
-                                    height: 20,
-                                    child: AudioWaveforms(
-                                      enableGesture: false,
-                                      size: const Size(50, 20),
-                                      recorderController: _recorderController,
-                                      waveStyle: const WaveStyle(
-                                        waveColor: navGreen,
-                                        showMiddleLine: false,
-                                        extendWaveform: true,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
+                              // 🎙 Mic icon / discard+confirm+waveform
+                              _recordingControl(iconSize),
+                            ],
+                          ),
                         ),
 
                         // ✅ Check icon (flush right)

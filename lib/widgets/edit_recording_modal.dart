@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:forditva/services/gemini_translation_service.dart';
 import 'package:forditva/services/google_speech_to_text_service.dart';
+import 'package:forditva/widgets/amp_waveform.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -394,7 +395,7 @@ class _EditTextModalState extends State<EditTextModal> {
                                                 left: 6,
                                                 right: 10,
                                               ),
-                                              child: _AmpWaveform(
+                                              child: AmpWaveform(
                                                 levels: _levels,
                                               ),
                                             ),
@@ -433,48 +434,6 @@ class _EditTextModalState extends State<EditTextModal> {
         ),
         ),
       ),
-    );
-  }
-}
-
-
-/// Full-width grey waveform for the edit panel, driven by the recorder's
-/// amplitude levels (0..1). Fills whatever width it is given.
-class _AmpWaveform extends StatelessWidget {
-  final List<double> levels;
-  const _AmpWaveform({required this.levels});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const barW = 4.0;
-        const gap = 4.0;
-        const maxBar = 36.0;
-        final count = (constraints.maxWidth / (barW + gap)).floor().clamp(1, 200);
-        final bars = List<double>.generate(count, (i) {
-          final idx = levels.length - count + i;
-          final v = idx >= 0 ? levels[idx] : 0.0;
-          return 4 + v * (maxBar - 4);
-        });
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children:
-              bars
-                  .map(
-                    (h) => Container(
-                      width: barW,
-                      height: h,
-                      margin: const EdgeInsets.symmetric(horizontal: gap / 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade700,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  )
-                  .toList(),
-        );
-      },
     );
   }
 }
