@@ -12,7 +12,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'flutter_gen/gen_l10n/app_localizations.dart';
 import 'models/language_enum.dart';
 import 'services/level_pref.dart';
+import 'services/prepaid_token_service.dart';
 import 'services/third_language_pref.dart';
+import 'services/token_balance.dart';
 
 const Color _navGreen = Color(0xFF436F4D);
 const Color _pageBg = Color(0xFFF6F3F7);
@@ -40,17 +42,32 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   bool _howItWorksExpanded = true;
   int _level = LevelPref.level;
   final TextEditingController _codeController = TextEditingController();
+  final PrepaidTokenService _prepaidTokens = PrepaidTokenService();
+  bool _isRedeeming = false;
 
-  // Placeholder until the credit backend is wired up.
-  final int _statusFilled = 4;
-  final int _statusTotal = 7;
+  // The status bar shows 7 blocks: all filled while the balance is at or above
+  // one full band (700 WIUs = 100 per block), then depleting proportionally
+  // below that.
+  static const int _statusTotal = 7;
+  static const int _fullBand = 700;
 
   AppLocalizations get _loc => AppLocalizations.of(context)!;
+
+  @override
+  void initState() {
+    super.initState();
+    TokenBalance.instance.load();
+  }
 
   @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
+  }
+
+  int _filledBlocks(int balance) {
+    if (balance >= _fullBand) return _statusTotal;
+    return (balance / _fullBand * _statusTotal).round().clamp(0, _statusTotal);
   }
 
   // ─── handlers ──────────────────────────────────────────────────────
@@ -99,7 +116,8 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     }
   }
 
-  void _submitCode() {
+  Future<void> _submitCode() async {
+    if (_isRedeeming) return;
     final code = _codeController.text.trim();
     if (code.isEmpty) {
       ScaffoldMessenger.of(
@@ -107,11 +125,43 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       ).showSnackBar(SnackBar(content: Text(_loc.pleaseEnterCode)));
       return;
     }
-    // TODO: validate/redeem code against the backend.
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('${_loc.codeSubmitted}: $code')));
-    _codeController.clear();
+    if (!_prepaidTokens.isValidFormat(code)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_loc.codeInvalid)));
+      return;
+    }
+
+    setState(() => _isRedeeming = true);
+    try {
+      final value = await _prepaidTokens.redeem(code);
+      await TokenBalance.instance.add(value);
+      if (!mounted) return;
+      _codeController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_loc.codeRedeemed}: $value WIUs')),
+      );
+    } on PrepaidTokenException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_messageFor(e.kind))));
+    } finally {
+      if (mounted) setState(() => _isRedeeming = false);
+    }
+  }
+
+  String _messageFor(PrepaidErrorKind kind) {
+    switch (kind) {
+      case PrepaidErrorKind.rateLimited:
+        return _loc.codeRateLimited;
+      case PrepaidErrorKind.network:
+        return _loc.codeNetworkError;
+      case PrepaidErrorKind.config:
+        return _loc.codeUnavailable;
+      case PrepaidErrorKind.invalidCode:
+        return _loc.codeInvalid;
+    }
   }
 
   Future<void> _openProfile() async {
@@ -385,19 +435,25 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     children: [
       Text(_loc.currentStatus, style: _label),
       const SizedBox(height: 10),
-      Row(
-        children: List.generate(_statusTotal, (i) {
-          return Expanded(
-            child: Container(
-              height: 24,
-              margin: EdgeInsets.only(right: i == _statusTotal - 1 ? 0 : 6),
-              decoration: BoxDecoration(
-                color: i < _statusFilled ? _navGreen : _progressEmpty,
-                borderRadius: BorderRadius.circular(5),
-              ),
-            ),
+      ValueListenableBuilder<int>(
+        valueListenable: TokenBalance.instance.value,
+        builder: (context, balance, _) {
+          final filled = _filledBlocks(balance);
+          return Row(
+            children: List.generate(_statusTotal, (i) {
+              return Expanded(
+                child: Container(
+                  height: 24,
+                  margin: EdgeInsets.only(right: i == _statusTotal - 1 ? 0 : 6),
+                  decoration: BoxDecoration(
+                    color: i < filled ? _navGreen : _progressEmpty,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              );
+            }),
           );
-        }),
+        },
       ),
     ],
   );
@@ -432,7 +488,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
           ),
           const SizedBox(width: 12),
           GestureDetector(
-            onTap: _submitCode,
+            onTap: _isRedeeming ? null : _submitCode,
             child: Container(
               width: 56,
               height: 56,
@@ -440,7 +496,15 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 color: _navGreen,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.check, color: Colors.white, size: 28),
+              child: _isRedeeming
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check, color: Colors.white, size: 28),
             ),
           ),
         ],

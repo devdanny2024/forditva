@@ -134,6 +134,23 @@ class AppLocalizationsHu extends AppLocalizations {
   String get codeSubmitted => 'Kód elküldve';
 
   @override
+  String get codeRedeemed => 'Kód beváltva';
+
+  @override
+  String get codeInvalid => 'Ez a kód érvénytelen, vagy már felhasználták';
+
+  @override
+  String get codeRateLimited =>
+      'Túl sok próbálkozás. Kérlek, várj egy kicsit, és próbáld újra';
+
+  @override
+  String get codeNetworkError =>
+      'Nincs kapcsolat. Kérlek, ellenőrizd az internetkapcsolatodat, és próbáld újra';
+
+  @override
+  String get codeUnavailable => 'A feltöltés jelenleg nem érhető el';
+
+  @override
   String get organizeCredits => 'Kreditek kezelése';
 
   @override
@@ -224,5 +241,5 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get errorMessage =>
-      'Jelenleg nem érjük el a fordítási szolgáltatást. Kérjük, ellenőrizze az internetkapcsolatot, és próbálja újra.';
+      'Nem értük el a fordítóprogramot. Kérlek, ellenőrizd az internetkapcsolatodat, és próbáld meg újra.';
 }

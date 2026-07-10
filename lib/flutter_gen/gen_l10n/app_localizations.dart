@@ -346,6 +346,36 @@ abstract class AppLocalizations {
   /// **'Code submitted'**
   String get codeSubmitted;
 
+  /// No description provided for @codeRedeemed.
+  ///
+  /// In en, this message translates to:
+  /// **'Code redeemed'**
+  String get codeRedeemed;
+
+  /// No description provided for @codeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This code is invalid or has already been used'**
+  String get codeInvalid;
+
+  /// No description provided for @codeRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Please wait a moment and try again'**
+  String get codeRateLimited;
+
+  /// No description provided for @codeNetworkError.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection. Please check your internet and try again'**
+  String get codeNetworkError;
+
+  /// No description provided for @codeUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Recharging is not available right now'**
+  String get codeUnavailable;
+
   /// No description provided for @organizeCredits.
   ///
   /// In en, this message translates to:

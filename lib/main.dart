@@ -18,6 +18,7 @@ import 'learning_list.dart';
 import 'profile_settings_page.dart';
 import 'services/level_pref.dart';
 import 'services/third_language_pref.dart';
+import 'services/token_balance.dart';
 import 'textpage.dart';
 
 // Colors and constants
@@ -37,6 +38,7 @@ void main() async {
   await dotenv.load();
   await ThirdLanguagePref.load();
   await LevelPref.load();
+  await TokenBalance.instance.load();
   runApp(
     MultiProvider(
       providers: [

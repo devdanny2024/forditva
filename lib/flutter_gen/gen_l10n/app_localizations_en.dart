@@ -134,6 +134,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get codeSubmitted => 'Code submitted';
 
   @override
+  String get codeRedeemed => 'Code redeemed';
+
+  @override
+  String get codeInvalid => 'This code is invalid or has already been used';
+
+  @override
+  String get codeRateLimited =>
+      'Too many attempts. Please wait a moment and try again';
+
+  @override
+  String get codeNetworkError =>
+      'No connection. Please check your internet and try again';
+
+  @override
+  String get codeUnavailable => 'Recharging is not available right now';
+
+  @override
   String get organizeCredits => 'Manage Credits';
 
   @override

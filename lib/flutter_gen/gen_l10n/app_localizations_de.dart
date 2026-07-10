@@ -134,6 +134,24 @@ class AppLocalizationsDe extends AppLocalizations {
   String get codeSubmitted => 'Code übermittelt';
 
   @override
+  String get codeRedeemed => 'Code eingelöst';
+
+  @override
+  String get codeInvalid =>
+      'Dieser Code ist ungültig oder wurde bereits verwendet';
+
+  @override
+  String get codeRateLimited =>
+      'Zu viele Versuche. Bitte warte einen Moment und versuche es erneut';
+
+  @override
+  String get codeNetworkError =>
+      'Keine Verbindung. Bitte prüfe deine Internetverbindung und versuche es erneut';
+
+  @override
+  String get codeUnavailable => 'Das Aufladen ist gerade nicht verfügbar';
+
+  @override
   String get organizeCredits => 'Guthaben verwalten';
 
   @override
@@ -225,5 +243,5 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get errorMessage =>
-      'Wir können den Übersetzungsdienst gerade nicht erreichen. Bitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut.';
+      'Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut.';
 }
