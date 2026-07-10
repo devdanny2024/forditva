@@ -13,6 +13,10 @@ class TokenBalance {
   static final TokenBalance instance = TokenBalance._();
 
   static const _key = 'token_balance_wiu';
+  static const _welcomeKey = 'welcome_granted';
+
+  /// One-time WIUs credited to every new install on first launch.
+  static const welcomeGrant = 500;
 
   /// Current balance in WIUs. Listen to rebuild the status bar on change.
   final ValueNotifier<int> value = ValueNotifier<int>(0);
@@ -28,6 +32,18 @@ class TokenBalance {
       TokenUsage.instance.total.addListener(_onUsageChanged);
       _attached = true;
     }
+  }
+
+  /// Credits the one-time welcome grant on the very first launch of this
+  /// install. Stored on-device only (no server), so a reinstall re-grants on
+  /// Android; that is acceptable while there are no users. Safe to call every
+  /// launch: it grants only once.
+  Future<void> grantWelcomeIfFirstRun() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_welcomeKey) ?? false) return;
+    value.value += welcomeGrant;
+    await prefs.setBool(_welcomeKey, true);
+    await prefs.setInt(_key, value.value);
   }
 
   /// Adds [amount] WIUs (e.g. after redeeming a code) and persists the total.

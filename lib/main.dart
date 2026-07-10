@@ -39,6 +39,7 @@ void main() async {
   await ThirdLanguagePref.load();
   await LevelPref.load();
   await TokenBalance.instance.load();
+  await TokenBalance.instance.grantWelcomeIfFirstRun();
   runApp(
     MultiProvider(
       providers: [
