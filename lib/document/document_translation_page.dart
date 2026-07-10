@@ -796,9 +796,21 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                 const topMargin = 20.0;
                 const bottomMargin = 80.0;
                 const spacingBetween = 10.0;
+                // Fixed content height of the language-switcher row below the
+                // top card: padding (15+15) + the flag/text row (~40).
+                const switcherHeight = 70.0;
                 final cardHeight =
-                    (totalHeight - topMargin - bottomMargin - spacingBetween) /
-                    2;
+                    _keyboardIsVisible
+                        // Only the input card is shown while the keyboard is
+                        // up; let it fill the space instead of staying pinned
+                        // at half height, which left a large blank gap
+                        // between the switcher and the keyboard.
+                        ? totalHeight - topMargin - switcherHeight - 16.0
+                        : (totalHeight -
+                                topMargin -
+                                bottomMargin -
+                                spacingBetween) /
+                            2;
 
                 return SingleChildScrollView(
                   child: Column(
