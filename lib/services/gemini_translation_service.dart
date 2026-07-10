@@ -138,12 +138,22 @@ Output format (strict JSON, no extra text, no markdown formatting inside the JSO
   }
 
   Future<String> detectLanguage(String inputText) async {
+    // flash-lite (the default _model) does little "thinking" and was
+    // misidentifying short/diacritic-heavy text — e.g. genuine Hungarian
+    // read as Portuguese or German (Markus, 2026-07-10). Language ID needs
+    // more care than a plain translation, so use the full model here even
+    // though it's slower; this call only runs once per image.
+    final detectModel = GenerativeModel(
+      model: 'gemini-flash-latest',
+      apiKey: dotenv.env['GEMINI_API_KEY']!,
+      generationConfig: GenerationConfig(temperature: 0.0),
+    );
     final prompt = '''
-Detect the language of the following text and reply with exactly the ISO 639-1 code (two uppercase letters), no other words:
+Detect the language of the following text and reply with exactly the ISO 639-1 code (two uppercase letters), no other words. Base your answer on the text as a whole, not just the first few words.
 
 $inputText
 ''';
-    final response = await _model.generateContent([Content.text(prompt)]);
+    final response = await detectModel.generateContent([Content.text(prompt)]);
     _recordUsage(response);
     return response.text?.trim().toUpperCase() ?? '';
   }

@@ -22,6 +22,7 @@ const Color _sectionBar = Color(0xFFD8D8D8);
 const Color _labelDark = Color(0xFF222222);
 const Color _fieldBorder = Color(0xFF9E9E9E);
 const Color _progressEmpty = Color(0xFFBFD0BF);
+const Color _navOrange = Color(0xFFCC8A2E);
 
 const String _profileUrl = 'https://wir-in-ungarn.hu';
 
@@ -439,6 +440,15 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
         valueListenable: TokenBalance.instance.value,
         builder: (context, balance, _) {
           final filled = _filledBlocks(balance);
+          // Low balance needs to read as a warning, not just "empty" (Markus,
+          // 2026-07-10): 0-1 blocks filled is red, 2 is orange, 3+ stays the
+          // normal green.
+          final filledColor =
+              filled <= 1
+                  ? Colors.red
+                  : filled == 2
+                  ? _navOrange
+                  : _navGreen;
           return Row(
             children: List.generate(_statusTotal, (i) {
               return Expanded(
@@ -446,7 +456,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                   height: 24,
                   margin: EdgeInsets.only(right: i == _statusTotal - 1 ? 0 : 6),
                   decoration: BoxDecoration(
-                    color: i < filled ? _navGreen : _progressEmpty,
+                    color: i < filled ? filledColor : _progressEmpty,
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),

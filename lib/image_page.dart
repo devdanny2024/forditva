@@ -274,6 +274,23 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     return s.startsWith('<') && s.endsWith('>');
   }
 
+  /// Salvages a JSON array embedded in extra prose. Gemini sometimes breaks
+  /// its own strict-JSON-only instruction and adds commentary (Markus,
+  /// 2026-07-10: raw reasoning like `wait, "X" is fully visible` leaked into
+  /// the displayed result). Finds the outermost '[' ... ']' and tries to
+  /// parse just that; returns null if nothing valid can be recovered.
+  String? _extractJsonArray(String str) {
+    final start = str.indexOf('[');
+    final end = str.lastIndexOf(']');
+    if (start == -1 || end == -1 || end <= start) return null;
+    final candidate = str.substring(start, end + 1);
+    try {
+      final decoded = json.decode(candidate);
+      if (decoded is List) return candidate;
+    } catch (_) {}
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -518,41 +535,54 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         toLangCode: _langCode(_leftLang),
       );
 
-      String sampleText;
-      try {
-        final maybeJson = json.decode(out);
-        if (maybeJson is List &&
-            maybeJson.isNotEmpty &&
-            maybeJson[0]['o'] != null) {
-          sampleText = maybeJson[0]['o'].toString();
-        } else {
+      // The language-mismatch check only makes sense in translate mode, where
+      // each JSON segment has an "o" (original) field in the source language.
+      // In interpret mode the whole output is already written in the target
+      // language, so detecting its language and comparing it against the
+      // source language was a guaranteed false mismatch (Markus, 2026-07-10:
+      // "explain image" reporting "your language is German" right after a
+      // correct Hungarian translation).
+      if (!_interpretMode) {
+        String sampleText;
+        try {
+          final maybeJson = json.decode(out);
+          if (maybeJson is List && maybeJson.isNotEmpty) {
+            // Use every segment's original text, not just the first, so
+            // short/ambiguous fragments don't dominate detection (Markus,
+            // 2026-07-10: genuine Hungarian misdetected as Portuguese/German).
+            sampleText = maybeJson
+                .map((e) => (e is Map && e['o'] != null) ? e['o'].toString() : '')
+                .where((s) => s.isNotEmpty)
+                .join(' ');
+            if (sampleText.isEmpty) sampleText = out;
+          } else {
+            sampleText = out;
+          }
+        } catch (_) {
           sampleText = out;
         }
-      } catch (_) {
-        sampleText = out;
-      }
 
-      final rawDetected = await _gemini.detectLanguage(sampleText);
+        final rawDetected = await _gemini.detectLanguage(sampleText);
 
-      // Normalize Gemini result. Guard the substring so a short/empty result
-      // can't throw a RangeError (which was surfacing as a false error).
-      final normalized = rawDetected.toUpperCase().replaceAll('-', '');
-      final detected =
-          normalized.length >= 2 ? normalized.substring(0, 2) : normalized;
+        // Normalize Gemini result. Guard the substring so a short/empty result
+        // can't throw a RangeError (which was surfacing as a false error).
+        final normalized = rawDetected.toUpperCase().replaceAll('-', '');
+        final detected =
+            normalized.length >= 2 ? normalized.substring(0, 2) : normalized;
 
-      final langCodes = {
-        Language.hu: 'HU',
-        Language.de: 'DE',
-        Language.en: 'EN',
-        Language.nl: 'NL',
-        Language.fr: 'FR',
-        Language.es: 'ES',
-        Language.ru: 'RU',
-        Language.it: 'IT',
-      };
+        final langCodes = {
+          Language.hu: 'HU',
+          Language.de: 'DE',
+          Language.en: 'EN',
+          Language.nl: 'NL',
+          Language.fr: 'FR',
+          Language.es: 'ES',
+          Language.ru: 'RU',
+          Language.it: 'IT',
+        };
 
-      if (detected != langCodes[_rightLang]) {
-        if (mounted) {
+        if (detected != langCodes[_rightLang]) {
+          if (mounted) {
           await showDialog(
             context: context,
             builder:
@@ -621,6 +651,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           _resultText = '';
         });
         return;
+        }
       }
 
       final cleaned = out.trim();
@@ -1009,9 +1040,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           final htmlStr = stripHtmlCodeFence(
                                             res,
                                           );
-                                          if (_isJsonArray(res)) {
+                                          final salvagedJson =
+                                              _isJsonArray(res)
+                                                  ? res
+                                                  : _extractJsonArray(res);
+                                          if (salvagedJson != null) {
                                             return formattedJsonResult(
-                                              res,
+                                              salvagedJson,
                                               panelH,
                                               onlyTranslated:
                                                   _laActive, // Hide original if LA is active
@@ -1035,13 +1070,29 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                               },
                                             );
                                           } else {
+                                            // Non-empty but neither valid
+                                            // JSON nor HTML: Gemini broke its
+                                            // own strict-output format
+                                            // (Markus, 2026-07-10: raw
+                                            // reasoning text leaked into the
+                                            // result). Never show that raw
+                                            // text — fall back to a clean
+                                            // message, same as an unclear
+                                            // image. Empty/placeholder text
+                                            // still renders as before.
+                                            final shown =
+                                                res.isEmpty
+                                                    ? res
+                                                    : AppLocalizations.of(
+                                                      context,
+                                                    )!.imageNotClearBody;
                                             return Text(
-                                              res,
+                                              shown,
                                               style:
                                                   GoogleFonts.robotoCondensed(
                                                     fontSize:
                                                         calculateFontSizes(
-                                                          res,
+                                                          shown,
                                                           panelH,
                                                         ) *
                                                         _zoomLevel,

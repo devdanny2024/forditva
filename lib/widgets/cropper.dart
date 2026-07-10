@@ -293,7 +293,9 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
               child: Container(
                 decoration: BoxDecoration(
                   color: navGreen,
-                  shape: BoxShape.circle,
+                  // Rounded square, not a circle — matches the icon buttons
+                  // used everywhere else in the app (Markus, 2026-07-10).
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.black26,
@@ -320,7 +322,9 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
               child: Container(
                 decoration: BoxDecoration(
                   color: navRed,
-                  shape: BoxShape.circle,
+                  // Rounded square, not a circle — matches the icon buttons
+                  // used everywhere else in the app (Markus, 2026-07-10).
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.black26,
