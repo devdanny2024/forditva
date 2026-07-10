@@ -6,7 +6,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:forditva/document/document_translation_page.dart'
+    show LandscapeZoomModal;
 import 'package:forditva/services/gemini_image_service.dart';
+import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/services/gemini_translation_service.dart';
 import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:share_plus/share_plus.dart'; // your Gemini client
@@ -257,7 +260,6 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   // Placeholder text for preview
   static const String _placeholderText = '';
 
-  bool _zoomable = false;
   bool _interpretMode = false; // false = translate, true = interpret
   late final ScrollController _scrollController;
   bool _isJsonArray(String str) {
@@ -520,6 +522,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   }
 
   Future<void> _processImage({required File imageFile}) async {
+    if (!await ensureWiuBalance(context)) return;
+
     setState(() {
       _isProcessing = true;
       _resultText = '';
@@ -1163,12 +1167,23 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       ),
                                     ),
                                     SizedBox(width: iconSize * 0.5),
-                                    // Fullscreen (zoomable view)
+                                    // Fullscreen: was only toggling a flag
+                                    // nothing read (Markus, 2026-07-10: "the
+                                    // zoom button is not working"). Now opens
+                                    // the same landscape zoom view used on
+                                    // the conversation cards.
                                     GestureDetector(
-                                      onTap:
-                                          () => setState(
-                                            () => _zoomable = !_zoomable,
-                                          ),
+                                      onTap: () {
+                                        final zoomText = _speakableText();
+                                        if (zoomText.isEmpty) return;
+                                        showDialog(
+                                          context: context,
+                                          builder:
+                                              (_) => LandscapeZoomModal(
+                                                text: zoomText,
+                                              ),
+                                        );
+                                      },
                                       child: Image.asset(
                                         'assets/png24/black/b_fullscreen.png',
                                         width: iconSize,

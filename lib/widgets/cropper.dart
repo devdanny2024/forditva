@@ -290,22 +290,14 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
                   Navigator.of(context).pop(croppedFile); // Return cropped file
                 }
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: navGreen,
-                  // Rounded square, not a circle — matches the icon buttons
-                  // used everywhere else in the app (Markus, 2026-07-10).
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(2, 2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(16),
-                child: const Icon(Icons.check, color: Colors.white, size: 36),
+              // The app's own asset icons already are rounded-square, colored
+              // buttons — no extra Container/Icon needed, same as every other
+              // confirm/cancel pair in the app (Markus, 2026-07-10: "these
+              // are not our icons").
+              child: Image.asset(
+                'assets/images/check_green.png',
+                width: 64,
+                height: 64,
               ),
             ),
           ),
@@ -319,22 +311,10 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
                   _points = []; // Clear all drawn points
                 });
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: navRed,
-                  // Rounded square, not a circle — matches the icon buttons
-                  // used everywhere else in the app (Markus, 2026-07-10).
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(2, 2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(16),
-                child: const Icon(Icons.clear, color: Colors.white, size: 36),
+              child: Image.asset(
+                'assets/images/close_red.png',
+                width: 64,
+                height: 64,
               ),
             ),
           ),

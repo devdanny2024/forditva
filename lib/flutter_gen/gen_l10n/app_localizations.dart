@@ -543,6 +543,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'We can\'t reach the translation service right now. Please check your internet connection and try again.'**
   String get errorMessage;
+
+  /// No description provided for @wiuEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Out of credit'**
+  String get wiuEmptyTitle;
+
+  /// No description provided for @wiuEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your WIU balance is empty. Please top up on wir-in-ungarn.hu to keep translating.'**
+  String get wiuEmptyBody;
+
+  /// No description provided for @wiuLowBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu.'**
+  String get wiuLowBody;
 }
 
 class _AppLocalizationsDelegate

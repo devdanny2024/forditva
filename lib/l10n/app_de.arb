@@ -73,5 +73,8 @@
   "imagePickerLine2": " VON DEINEM GERÄT.",
   "cropInstruction": "Forme mit deinem Finger den gewünschten Bereich",
   "errorTitle": "Verbindung nicht möglich",
-  "errorMessage": "Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut."
+  "errorMessage": "Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut.",
+  "wiuEmptyTitle": "Guthaben aufgebraucht",
+  "wiuEmptyBody": "Dein WIU-Guthaben ist leer. Bitte lade auf wir-in-ungarn.hu auf, um weiter übersetzen zu können.",
+  "wiuLowBody": "Dein WIU-Guthaben wird knapp. Lade bald auf wir-in-ungarn.hu auf."
 }

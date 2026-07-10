@@ -16,6 +16,7 @@ import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:forditva/services/google_speech_to_text_service.dart';
 import 'package:forditva/flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:forditva/widgets/copied_toast.dart';
+import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/utils/utils.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart'; // getTemporaryDirectory
@@ -671,6 +672,8 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   }
 
   Future<void> _translateText(String input) async {
+    if (!await ensureWiuBalance(context)) return;
+
     final from = _langLabels[_rightLang]!; // used to be _leftLang
     final to = _langLabels[_leftLang]!; // used to be _rightLang
 

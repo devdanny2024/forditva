@@ -12,6 +12,7 @@ import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:forditva/services/learning_store.dart';
 import 'package:forditva/services/level_pref.dart';
 import 'package:forditva/widgets/error_dialog.dart';
+import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:forditva/services/third_language_pref.dart';
 import 'package:forditva/utils/debouncer.dart'; // if you created it separately
@@ -1229,6 +1230,7 @@ class _TextPageState extends State<TextPage> {
                         onTranscribed: (txt) async {
                           setState(() => _isTopRecording = false);
                           if (txt.trim().isEmpty) return;
+                          if (!await ensureWiuBalance(context)) return;
                           setState(() {
                             _translation = txt;
                             _isTranslating = true;
@@ -1297,6 +1299,7 @@ class _TextPageState extends State<TextPage> {
                         onTranscribed: (txt) async {
                           setState(() => _isBottomRecording = false);
                           if (txt.trim().isEmpty) return;
+                          if (!await ensureWiuBalance(context)) return;
                           setState(() {
                             _inputController.text = txt;
                             _isTranslating = true;

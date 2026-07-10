@@ -244,4 +244,15 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get errorMessage =>
       'Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut.';
+
+  @override
+  String get wiuEmptyTitle => 'Guthaben aufgebraucht';
+
+  @override
+  String get wiuEmptyBody =>
+      'Dein WIU-Guthaben ist leer. Bitte lade auf wir-in-ungarn.hu auf, um weiter übersetzen zu können.';
+
+  @override
+  String get wiuLowBody =>
+      'Dein WIU-Guthaben wird knapp. Lade bald auf wir-in-ungarn.hu auf.';
 }

@@ -18,8 +18,19 @@ class TokenBalance {
   /// One-time WIUs credited to every new install on first launch.
   static const welcomeGrant = 500;
 
+  /// Below this, the UI nudges the user to top up soon without blocking yet
+  /// (Markus, 2026-07-10: warn under 200 WIUs).
+  static const lowBalanceThreshold = 200;
+
   /// Current balance in WIUs. Listen to rebuild the status bar on change.
   final ValueNotifier<int> value = ValueNotifier<int>(0);
+
+  /// True once the balance has run out — callers must block new AI requests
+  /// and tell the user to top up (Markus, 2026-07-10).
+  bool get isEmpty => value.value <= 0;
+
+  /// True while there's still balance left but it's running low.
+  bool get isLow => value.value > 0 && value.value < lowBalanceThreshold;
 
   bool _attached = false;
   int _lastSeenUsage = 0;

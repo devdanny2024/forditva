@@ -243,4 +243,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get errorMessage =>
       'We can\'t reach the translation service right now. Please check your internet connection and try again.';
+
+  @override
+  String get wiuEmptyTitle => 'Out of credit';
+
+  @override
+  String get wiuEmptyBody =>
+      'Your WIU balance is empty. Please top up on wir-in-ungarn.hu to keep translating.';
+
+  @override
+  String get wiuLowBody =>
+      'Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu.';
 }
