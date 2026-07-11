@@ -901,10 +901,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
             );
           }
         },
-        child: Image.asset(
-          'assets/images/microphone-white-border.png',
-          width: iconSize,
-        ),
+        // Matches the mic icon used everywhere else (edit_recording_modal.dart)
+        // — this one was never updated (Markus, 2026-07-11: "mic hasn't changed").
+        child: Image.asset('assets/images/b_microphone.png', width: iconSize),
       );
     }
     return Expanded(

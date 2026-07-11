@@ -372,15 +372,14 @@ class _MainScreenState extends State<MainScreen> {
                           child: Text(
                             _getPageName(_currentPage),
                             maxLines: 1,
-                            // Was 18 — Markus, 2026-07-11: text looked too
-                            // reduced. The surrounding FittedBox still
-                            // scales the longest label (e.g. "Beszélgetés",
-                            // "Tanulási lista") down if it doesn't fit, so
-                            // this is safe to raise; shorter labels now
-                            // render visibly larger.
+                            // Was 18, then 21 — Markus, 2026-07-11: still
+                            // wanted it bigger. The surrounding FittedBox
+                            // still scales the longest label (e.g.
+                            // "Beszélgetés", "Tanulási lista") down if it
+                            // doesn't fit, so this is safe to raise further.
                             style: GoogleFonts.robotoCondensed(
                               fontWeight: FontWeight.w500,
-                              fontSize: 21,
+                              fontSize: 24,
                               color: Colors.black,
                             ),
                           ),
