@@ -253,4 +253,9 @@ class AppLocalizationsHu extends AppLocalizations {
   @override
   String get wiuLowBody =>
       'Fogy a WIU egyenleged. Töltsd fel hamarosan a wir-in-ungarn.hu oldalon.';
+
+  @override
+  String wiuRemaining(Object count) {
+    return 'Még $count WIU van hátra';
+  }
 }

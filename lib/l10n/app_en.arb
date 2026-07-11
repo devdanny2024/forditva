@@ -82,5 +82,11 @@
   "errorMessage": "We can't reach the translation service right now. Please check your internet connection and try again.",
   "wiuEmptyTitle": "Out of credit",
   "wiuEmptyBody": "Your WIU balance is empty. Please top up on wir-in-ungarn.hu to keep translating.",
-  "wiuLowBody": "Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu."
+  "wiuLowBody": "Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu.",
+  "wiuRemaining": "{count} WIUs remaining",
+  "@wiuRemaining": {
+    "placeholders": {
+      "count": {}
+    }
+  }
 }

@@ -561,6 +561,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu.'**
   String get wiuLowBody;
+
+  /// No description provided for @wiuRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} WIUs remaining'**
+  String wiuRemaining(Object count);
 }
 
 class _AppLocalizationsDelegate

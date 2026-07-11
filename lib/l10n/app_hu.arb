@@ -76,5 +76,11 @@
   "errorMessage": "Nem értük el a fordítóprogramot. Kérlek, ellenőrizd az internetkapcsolatodat, és próbáld meg újra.",
   "wiuEmptyTitle": "Nincs egyenleg",
   "wiuEmptyBody": "Kiürült a WIU egyenleged. Kérlek, töltsd fel a wir-in-ungarn.hu oldalon, hogy tovább tudj fordítani.",
-  "wiuLowBody": "Fogy a WIU egyenleged. Töltsd fel hamarosan a wir-in-ungarn.hu oldalon."
+  "wiuLowBody": "Fogy a WIU egyenleged. Töltsd fel hamarosan a wir-in-ungarn.hu oldalon.",
+  "wiuRemaining": "Még {count} WIU van hátra",
+  "@wiuRemaining": {
+    "placeholders": {
+      "count": {}
+    }
+  }
 }

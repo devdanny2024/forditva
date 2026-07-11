@@ -20,13 +20,17 @@ class GeminiTtsService {
   // Native voice per language: [languageCode, voiceName]. Every selectable
   // language (HU/DE + the third-language options) needs an entry, otherwise
   // its text was read with the default (German/Hungarian) voice.
+  // All WaveNet ($4/1M chars), not Neural2 ($16/1M): Markus, 2026-07-11,
+  // correctness matters more than voice quality, keep TTS cost down. Each
+  // name verified directly against the live Google TTS API before this
+  // change (curl POST returned 200 for all five).
   static const Map<String, List<String>> _voices = {
-    'DE': ['de-DE', 'de-DE-Neural2-B'],
+    'DE': ['de-DE', 'de-DE-Wavenet-B'],
     'HU': ['hu-HU', 'hu-HU-Wavenet-A'],
-    'EN': ['en-US', 'en-US-Neural2-D'],
-    'FR': ['fr-FR', 'fr-FR-Neural2-F'],
-    'ES': ['es-ES', 'es-ES-Neural2-A'],
-    'IT': ['it-IT', 'it-IT-Neural2-A'],
+    'EN': ['en-US', 'en-US-Wavenet-D'],
+    'FR': ['fr-FR', 'fr-FR-Wavenet-F'],
+    'ES': ['es-ES', 'es-ES-Wavenet-B'],
+    'IT': ['it-IT', 'it-IT-Wavenet-D'],
     'NL': ['nl-NL', 'nl-NL-Wavenet-F'],
     'RU': ['ru-RU', 'ru-RU-Wavenet-A'],
   };

@@ -449,19 +449,40 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                   : filled == 2
                   ? _navOrange
                   : _navGreen;
-          return Row(
-            children: List.generate(_statusTotal, (i) {
-              return Expanded(
-                child: Container(
-                  height: 24,
-                  margin: EdgeInsets.only(right: i == _statusTotal - 1 ? 0 : 6),
-                  decoration: BoxDecoration(
-                    color: i < filled ? filledColor : _progressEmpty,
-                    borderRadius: BorderRadius.circular(5),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: List.generate(_statusTotal, (i) {
+                  return Expanded(
+                    child: Container(
+                      height: 24,
+                      margin: EdgeInsets.only(
+                        right: i == _statusTotal - 1 ? 0 : 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: i < filled ? filledColor : _progressEmpty,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              // Below the full band, show the exact count too, not just the
+              // color (Markus, 2026-07-11: know internally/visibly how many
+              // WIUs remain once it's under 700).
+              if (balance < _fullBand) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _loc.wiuRemaining(balance),
+                  style: GoogleFonts.robotoCondensed(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: filledColor,
                   ),
                 ),
-              );
-            }),
+              ],
+            ],
           );
         },
       ),

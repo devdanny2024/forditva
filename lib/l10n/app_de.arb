@@ -76,5 +76,11 @@
   "errorMessage": "Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut.",
   "wiuEmptyTitle": "Guthaben aufgebraucht",
   "wiuEmptyBody": "Dein WIU-Guthaben ist leer. Bitte lade es auf wir-in-ungarn.hu auf, um weiter zu übersetzen.",
-  "wiuLowBody": "Dein WIU-Guthaben wird knapp. Lade bald auf wir-in-ungarn.hu auf."
+  "wiuLowBody": "Dein WIU-Guthaben wird knapp. Lade bald auf wir-in-ungarn.hu auf.",
+  "wiuRemaining": "Noch {count} WIUs übrig",
+  "@wiuRemaining": {
+    "placeholders": {
+      "count": {}
+    }
+  }
 }

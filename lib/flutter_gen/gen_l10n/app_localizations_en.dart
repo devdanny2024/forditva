@@ -254,4 +254,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get wiuLowBody =>
       'Your WIU balance is getting low. Consider topping up soon on wir-in-ungarn.hu.';
+
+  @override
+  String wiuRemaining(Object count) {
+    return '$count WIUs remaining';
+  }
 }
