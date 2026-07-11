@@ -37,8 +37,7 @@ class DocumentPlaceholderPage extends StatefulWidget {
       _DocumentPlaceholderPageState();
 }
 
-class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
-    with SingleTickerProviderStateMixin {
+class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
   late final KeyboardVisibilityController _keyboardVisibilityController;
   late StreamSubscription<bool> _keyboardSubscription;
   bool _keyboardIsVisible = false;
@@ -139,8 +138,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     }
   }
 
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnim;
   bool _isSpeaking = false;
   Future<void> _speak() async {
     if (_translatedText.isEmpty) return;
@@ -190,6 +187,15 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     }
   }
 
+  /// Stops playback in place — the conversation page shows a stop-square
+  /// while playing (tap to stop); this page was showing a spinning circle
+  /// instead with no way to stop (Markus, 2026-07-11: "why the circle
+  /// spinner instead of the square that means stop").
+  Future<void> _stopSpeaking() async {
+    await _ttsAudioPlayer?.stop();
+    if (mounted) setState(() => _isSpeaking = false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -225,14 +231,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _flutterTts.setSpeechRate(0.5);
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
-    // 1. Pulse animation
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
 
     // 2. TTS event hooks
     _flutterTts.setStartHandler(() {
@@ -263,7 +261,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _db.close(); // ← close the DB when the page is torn down
     _ttsAudioPlayer?.dispose();
 
-    _pulseController.dispose();
     _inputController.dispose();
     _scrollController.dispose();
     _keyboardSubscription.cancel();
@@ -1236,22 +1233,21 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
               const Spacer(),
               GestureDetector(
                 onTap: () async {
-                  if (_translatedText.isNotEmpty) {
+                  if (_isSpeaking) {
+                    await _stopSpeaking();
+                  } else if (_translatedText.isNotEmpty) {
                     await _speak();
                   }
                 },
                 child:
                     _isSpeaking
-                        ? Transform.scale(
-                          scale: _pulseAnim.value,
-                          child: const SizedBox(
-                            width: 34,
-                            height: 34,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation(navRed),
-                            ),
-                          ),
+                        // No black stop-square asset exists (w_stop.png is
+                        // white, made for the dark conversation-page card,
+                        // and would be invisible on this light background).
+                        ? Icon(
+                          Icons.stop_rounded,
+                          color: Colors.black,
+                          size: iconSize,
                         )
                         : Image.asset(
                           'assets/png24/black/b_speaker.png',
