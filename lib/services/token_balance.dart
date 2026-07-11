@@ -4,16 +4,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'token_usage.dart';
 
 /// The user's prepaid credit, measured in WIUs (wir-in-ungarn units). Redeeming
-/// a prepaid code adds its value here; every AI request spends WIUs equal to the
-/// tokens it consumed (1 WIU = 1 token, and 10,000 WIUs cost about $25). The
-/// "Current Status" bar in Profile settings reads this. Persisted so the balance
-/// survives app restarts.
+/// a prepaid code adds its value here; every Gemini request spends WIUs equal
+/// to the tokens it consumed (1 WIU = 1 token, and 10,000 WIUs cost about
+/// $25 at Gemini's output-token rate). TTS is billed the same way but by
+/// character, converted to this same WIU rate via [spendFractional]. The
+/// "Current Status" bar in Profile settings reads this. Persisted so the
+/// balance survives app restarts.
 class TokenBalance {
   TokenBalance._();
   static final TokenBalance instance = TokenBalance._();
 
   static const _key = 'token_balance_wiu';
   static const _welcomeKey = 'welcome_granted';
+  // Stored as remainder*1000 (an int) since SharedPreferences has no double.
+  static const _remainderKey = 'token_balance_remainder_x1000';
 
   /// One-time WIUs credited to every new install on first launch.
   static const welcomeGrant = 500;
@@ -34,10 +38,14 @@ class TokenBalance {
 
   bool _attached = false;
   int _lastSeenUsage = 0;
+  // Carries fractional WIU cost (e.g. TTS billed by character) between calls
+  // so small per-play costs accumulate correctly instead of rounding to 0.
+  double _fractionalRemainder = 0.0;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     value.value = prefs.getInt(_key) ?? 0;
+    _fractionalRemainder = (prefs.getInt(_remainderKey) ?? 0) / 1000.0;
     if (!_attached) {
       _lastSeenUsage = TokenUsage.instance.total.value;
       TokenUsage.instance.total.addListener(_onUsageChanged);
@@ -74,8 +82,25 @@ class TokenBalance {
     _persist();
   }
 
+  /// Spends a fractional WIU cost that isn't a whole Gemini token count, e.g.
+  /// TTS, which Google bills by character rather than by token (Markus,
+  /// 2026-07-11: TTS wasn't being billed at all). Accumulates the fraction
+  /// until a whole WIU is owed, then debits the visible integer balance, so
+  /// small per-play costs aren't silently rounded away.
+  Future<void> spendFractional(double wiuCost) async {
+    if (wiuCost <= 0) return;
+    _fractionalRemainder += wiuCost;
+    final whole = _fractionalRemainder.floor();
+    if (whole > 0) {
+      _fractionalRemainder -= whole;
+      value.value = (value.value - whole).clamp(0, value.value);
+    }
+    await _persist();
+  }
+
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_key, value.value);
+    await prefs.setInt(_remainderKey, (_fractionalRemainder * 1000).round());
   }
 }

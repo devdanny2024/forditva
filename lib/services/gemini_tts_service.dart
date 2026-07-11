@@ -5,6 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'token_balance.dart';
+
 /// Text-to-speech via **Google Cloud TTS** with a NATIVE voice per language
 /// (German / Hungarian / English). The previous Gemini TTS used English-centric
 /// personas, which made German sound foreign-accented; native de-DE voices fix
@@ -28,6 +30,15 @@ class GeminiTtsService {
     'NL': ['nl-NL', 'nl-NL-Wavenet-F'],
     'RU': ['ru-RU', 'ru-RU-Wavenet-A'],
   };
+
+  /// WIU cost per character of a given voice, converted from Google Cloud
+  /// TTS's real per-character price at the same $0.0025/WIU rate the Gemini
+  /// text calls use (Markus, 2026-07-11: TTS wasn't billed at all). Neural2
+  /// voices cost $16/1M characters, WaveNet $4/1M.
+  double _wiuPerChar(String voiceName) {
+    final dollarsPerChar = voiceName.contains('Neural2') ? 16 / 1e6 : 4 / 1e6;
+    return dollarsPerChar / 0.0025;
+  }
 
   /// Detects the target language. Prefers an explicit [langCode]; otherwise
   /// parses the language out of the [instructions] the callers pass.
@@ -80,6 +91,8 @@ class GeminiTtsService {
     if (audioContent == null) {
       throw Exception('Google TTS returned no audio: ${response.body}');
     }
+
+    TokenBalance.instance.spendFractional(text.length * _wiuPerChar(v[1]));
 
     final bytes = base64Decode(audioContent);
     final dir = await getTemporaryDirectory();
