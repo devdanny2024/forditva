@@ -1091,7 +1091,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                 width: iconSize,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            // Markus, 2026-07-11 (voice note): spread the
+                            // icons further apart, there's room for it.
+                            const SizedBox(width: 20),
                             GestureDetector(
                               onTap: () async {
                                 final data = await Clipboard.getData(
@@ -1115,7 +1117,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                 width: iconSize,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 20),
                             // Edit — focuses the input field (opens the keyboard).
                             GestureDetector(
                               onTap:
@@ -1127,7 +1129,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                 width: iconSize,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 20),
                             _recordingControl(iconSize),
                           ],
                         ),
@@ -1166,7 +1168,9 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                   width: iconSize,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              // Markus, 2026-07-11 (voice note): spread the
+                              // icons further apart, there's room for it.
+                              const SizedBox(width: 18),
 
                               // 📋 Paste icon
                               GestureDetector(
@@ -1205,7 +1209,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                   width: iconSize,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 18),
 
                               // 🎙 Mic icon / discard+confirm+waveform
                               _recordingControl(iconSize),
