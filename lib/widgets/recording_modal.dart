@@ -305,12 +305,20 @@ class _RecordingModalState extends State<RecordingModal> {
   Widget build(BuildContext context) {
     // Hidden the moment the user commits; the async work continues behind it.
     if (_dismissed) return const SizedBox.shrink();
+    // Was a fixed 320px regardless of screen size (Markus, 2026-07-11: "does
+    // it work on all mobile resolutions?"). Scales with the screen instead,
+    // clamped so it stays usable on the narrowest phones and doesn't grow
+    // oversized on large phones/tablets.
+    final panelWidth = (MediaQuery.of(context).size.width * 0.85).clamp(
+      280.0,
+      380.0,
+    );
     return Material(
       elevation: 24,
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 320,
+        width: panelWidth,
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
         decoration: BoxDecoration(
           color: Colors.white,
