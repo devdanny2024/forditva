@@ -1,7 +1,8 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
-import 'token_usage.dart';
+import 'gemini_cost.dart';
+import 'token_balance.dart';
 
 class GeminiTranslator {
   final GenerativeModel _model;
@@ -14,9 +15,15 @@ class GeminiTranslator {
         apiKey: dotenv.env['GEMINI_API_KEY']!,
       );
 
-  /// Adds this response's token cost to the global tally.
+  /// Deducts this response's real-cost-weighted WIU price from the balance.
   void _recordUsage(GenerateContentResponse response) {
-    TokenUsage.instance.add(response.usageMetadata?.totalTokenCount ?? 0);
+    final usage = response.usageMetadata;
+    TokenBalance.instance.spendFractional(
+      geminiWiuCost(
+        promptTokens: usage?.promptTokenCount ?? 0,
+        outputTokens: usage?.candidatesTokenCount ?? 0,
+      ),
+    );
   }
 
   static const Map<String, String> _uiLanguageNames = {

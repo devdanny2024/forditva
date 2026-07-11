@@ -5,7 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:mime/mime.dart';
 
-import 'token_usage.dart';
+import 'gemini_cost.dart';
+import 'token_balance.dart';
 
 /// Image translation / interpretation via Gemini vision.
 ///
@@ -141,8 +142,13 @@ If nothing can be read, reply only with:
     }
 
     final data = jsonDecode(response.body);
-    final totalTokens = data['usageMetadata']?['totalTokenCount'] as int?;
-    if (totalTokens != null) TokenUsage.instance.add(totalTokens);
+    final usage = data['usageMetadata'] as Map<String, dynamic>?;
+    TokenBalance.instance.spendFractional(
+      geminiWiuCost(
+        promptTokens: usage?['promptTokenCount'] as int? ?? 0,
+        outputTokens: usage?['candidatesTokenCount'] as int? ?? 0,
+      ),
+    );
 
     final candidates = data['candidates'] as List?;
     if (candidates == null || candidates.isEmpty) return '';
