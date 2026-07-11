@@ -26,10 +26,6 @@ const Color navRed = Color(0xFFCD2A3E);
 const Color navGreen = Color(0xFF436F4D);
 
 bool _explain = false;
-// Paste vs typing detection: a paste inserts many chars in one change event,
-// typing adds ~1 at a time. Paste -> translate now; typing -> show a button.
-int _lastInputLength = 0;
-bool _showTranslateButton = false;
 bool _isTranslating = false;
 const Color textGrey = Color(0xFF898888);
 
@@ -223,7 +219,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
       });
     });
     _speech = stt.SpeechToText();
-    _inputController.addListener(_onInputChanged);
     _db = AppDatabase(); // ← initialize the DB
 
     _flutterTts = FlutterTts();
@@ -238,7 +233,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _pulseAnim = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _inputController.addListener(_onInputChanged);
 
     // 2. TTS event hooks
     _flutterTts.setStartHandler(() {
@@ -313,50 +307,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
         );
       },
     ).whenComplete(controller.dispose);
-  }
-
-  void _onInputChanged() {
-    final newText = _inputController.text;
-    DocumentTranslationState.inputText = newText;
-
-    final delta = newText.length - _lastInputLength;
-    _lastInputLength = newText.length;
-
-    if (newText.trim().isEmpty) {
-      setState(() {
-        _translatedText = '';
-        _isTranslating = false;
-        _showTranslateButton = false;
-      });
-      return;
-    }
-
-    // A paste (or recording/programmatic insert) adds many chars in one event;
-    // typing adds ~1 at a time. Paste -> translate now; typing -> show button.
-    if (delta >= 5) {
-      setState(() {
-        _showTranslateButton = false;
-        _translatedText = '';
-        _isTranslating = true;
-      });
-      _translateText(newText.trim());
-    } else {
-      setState(() {
-        _isTranslating = false;
-        _showTranslateButton = true;
-      });
-    }
-  }
-
-  void _translateNow() {
-    final text = _inputController.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      _showTranslateButton = false;
-      _translatedText = '';
-      _isTranslating = true;
-    });
-    _translateText(text);
   }
 
   Widget _buildSection(String title, String content) {
@@ -612,7 +562,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
     setState(() {
       _isTranslating = true;
-      _showTranslateButton = false;
       if (!_explain) _translatedText = '';
     });
 
@@ -820,10 +769,11 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                     children: [
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap:
-                            () => FocusScope.of(
-                              context,
-                            ).requestFocus(_inputFocusNode),
+                        // Tapping the text opens the same edit panel as the
+                        // pencil/mic icons (Markus, 2026-07-11: "this edit
+                        // panel is there when I click on the text input box —
+                        // it should be the other panel we just switched to").
+                        onTap: () => _showEditModal(),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           constraints: const BoxConstraints(minHeight: 180),
@@ -831,6 +781,10 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                           child: TextField(
                             controller: _inputController,
                             focusNode: _inputFocusNode,
+                            // Display only — all editing now happens in the
+                            // shared modal, so this never summons a keyboard.
+                            readOnly: true,
+                            showCursor: false,
                             maxLines: null,
                             style: GoogleFonts.robotoCondensed(
                               fontSize:
@@ -844,9 +798,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                               border: InputBorder.none,
                               contentPadding: EdgeInsets.zero,
                             ),
-                            textInputAction: TextInputAction.done,
-                            onEditingComplete:
-                                () => FocusScope.of(context).unfocus(),
                           ),
                         ),
                       ),
@@ -873,41 +824,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                   ),
                 ),
               ),
-              // Slow typing (not a paste): don't auto-translate, require an
-              // explicit tap so the user can keep typing. This belongs over
-              // the input card, not the translated output card — it was
-              // rendered on the output side, showing up over text that had
-              // already been auto-translated by a paste.
-              if (_showTranslateButton)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 8,
-                  child: Center(
-                    child: ElevatedButton(
-                      onPressed: _translateNow,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: navGreen,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 10,
-                        ),
-                        elevation: 4,
-                      ),
-                      child: Text(
-                        AppLocalizations.of(context)!.translateAction,
-                        style: GoogleFonts.robotoCondensed(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               if (!_keyboardIsVisible)
                 Positioned(
                   bottom: 8,
@@ -954,6 +870,8 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                         .selection = TextSelection.fromPosition(
                                       TextPosition(offset: pasted.length),
                                     );
+                                    DocumentTranslationState.inputText =
+                                        pasted;
                                   });
                                 }
                               },
