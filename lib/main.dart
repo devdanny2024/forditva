@@ -245,6 +245,38 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // Every nav-bar page name in every supported language, so the font-size
+  // calculation below always accounts for the longest one regardless of
+  // which page/language is currently showing.
+  static const List<String> _allPageNames = [
+    'Conversation', 'Document', 'Image', 'Learning List', 'Favorites', 'History',
+    'Gespräch', 'Dokument', 'Bild', 'Lernliste', 'Favoriten', 'Verlauf',
+    'Beszélgetés', 'Dokumentum', 'Kép', 'Tanulási lista', 'Kedvencek', 'Előzmények',
+  ];
+
+  /// The largest size (from a fixed tier list) at which every possible
+  /// nav-bar label still fits on one line within [maxWidth], so every label
+  /// renders at the same size instead of auto-shrinking individually.
+  double _navLabelFontSize(double maxWidth) {
+    const tiers = [24.0, 22.0, 20.0, 18.0, 16.0, 14.0];
+    for (final size in tiers) {
+      final style = GoogleFonts.robotoCondensed(
+        fontWeight: FontWeight.w500,
+        fontSize: size,
+      );
+      final fitsAll = _allPageNames.every((name) {
+        final painter = TextPainter(
+          text: TextSpan(text: name, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: double.infinity);
+        return painter.width <= maxWidth;
+      });
+      if (fitsAll) return size;
+    }
+    return tiers.last;
+  }
+
   @override
   Widget build(BuildContext context) {
     const double navBarHeight = 56.0;
@@ -363,26 +395,28 @@ class _MainScreenState extends State<MainScreen> {
                     child: Container(
                       color: Colors.white,
                       alignment: Alignment.center,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0,
-                          ),
-                          child: Text(
-                            _getPageName(_currentPage),
-                            maxLines: 1,
-                            // Was 18, then 21 — Markus, 2026-07-11: still
-                            // wanted it bigger. The surrounding FittedBox
-                            // still scales the longest label (e.g.
-                            // "Beszélgetés", "Tanulási lista") down if it
-                            // doesn't fit, so this is safe to raise further.
-                            style: GoogleFonts.robotoCondensed(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 24,
-                              color: Colors.black,
-                            ),
-                          ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        // Was a per-label FittedBox, so short labels ("Bild")
+                        // rendered larger than long ones ("Tanulási lista")
+                        // (Markus, 2026-07-11: "never allowed to change it...
+                        // all words there have always the same font size").
+                        // Compute ONE size that fits the longest label across
+                        // every language, and use it everywhere.
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Text(
+                              _getPageName(_currentPage),
+                              maxLines: 1,
+                              style: GoogleFonts.robotoCondensed(
+                                fontWeight: FontWeight.w500,
+                                fontSize: _navLabelFontSize(
+                                  constraints.maxWidth,
+                                ),
+                                color: Colors.black,
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),

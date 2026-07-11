@@ -64,10 +64,14 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
   final ValueNotifier<bool> hasHungarianText = ValueNotifier(false);
 
   void _updateHasHungarianText() {
+    // _rightLang is always the SOURCE (holds _inputController.text) and
+    // _leftLang is always the TARGET (holds _translatedText) — see
+    // _translateText. This was checking them backwards (Markus, 2026-07-11:
+    // recorded English -> Hungarian, but the bulb stayed disabled).
     final hungarianText =
-        _leftLang == Language.hungarian
+        _rightLang == Language.hungarian
             ? _inputController.text
-            : _rightLang == Language.hungarian
+            : _leftLang == Language.hungarian
             ? _translatedText
             : '';
     hasHungarianText.value = hungarianText.trim().isNotEmpty;
