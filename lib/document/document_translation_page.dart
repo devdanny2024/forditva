@@ -1,27 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:forditva/db/database.dart';
 import 'package:forditva/document/document_translation_state.dart';
 import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/gemini_tts_service.dart';
-import 'package:forditva/services/google_speech_to_text_service.dart';
 import 'package:forditva/flutter_gen/gen_l10n/app_localizations.dart';
-import 'package:forditva/widgets/amp_waveform.dart';
 import 'package:forditva/widgets/copied_toast.dart';
+import 'package:forditva/widgets/edit_recording_modal.dart';
 import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/utils/utils.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:path_provider/path_provider.dart'; // getTemporaryDirectory
-import 'package:permission_handler/permission_handler.dart';
-import 'package:record/record.dart'; // AudioRecorder, RecordConfig, AudioEncoder
 import 'package:share_plus/share_plus.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -52,16 +46,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
   late final KeyboardVisibilityController _keyboardVisibilityController;
   late StreamSubscription<bool> _keyboardSubscription;
   bool _keyboardIsVisible = false;
-  bool _isRecording = false;
-  late final AudioRecorder _audioRecorder;
-  String? _recordPath;
-  // Waveform is driven by the same recorder's amplitude stream (0..1), same
-  // as the tuned edit-text panel — avoids a second microphone recorder that
-  // would starve it of audio (Markus, 2026-07-10: "use exactly the same
-  // logic like we have in the Edit panel").
-  final List<double> _levels = [];
-  StreamSubscription<Amplitude>? _ampSub;
-  bool _isInputLoading = false;
   final _ttsService = GeminiTtsService();
   ap.AudioPlayer? _ttsAudioPlayer; // 👈 audio player instance
   double _zoomLevel = 1.0; // Default zoom factor
@@ -226,7 +210,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     _rightLang = DocumentTranslationState.rightLang ?? pair[1];
     DocumentTranslationState.leftLang = null;
     DocumentTranslationState.rightLang = null;
-    _audioRecorder = AudioRecorder();
     _inputController = TextEditingController(
       text: DocumentTranslationState.inputText,
     );
@@ -281,7 +264,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
 
   @override
   void dispose() {
-    _ampSub?.cancel();
     _inputFocusNode.dispose();
 
     _db.close(); // ← close the DB when the page is torn down
@@ -296,124 +278,41 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     super.dispose();
   }
 
-  Future<void> _startRecording() async {
-    setState(() {
-      _isRecording = true;
-      _levels.clear();
-    });
-
-    final dir = await getTemporaryDirectory();
-    _recordPath =
-        '${dir.path}/record_${DateTime.now().millisecondsSinceEpoch}.wav';
-
-    // Start actual audio recording (for STT)
-    await _audioRecorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-        numChannels: 1,
-      ),
-      path: _recordPath!,
-    );
-
-    // Drive the waveform from the same recorder's amplitude (dBFS ~ -45..0),
-    // so no second microphone recorder is needed.
-    _ampSub = _audioRecorder
-        .onAmplitudeChanged(const Duration(milliseconds: 90))
-        .listen((amp) {
-          if (!mounted) return;
-          final norm = ((amp.current + 45) / 45).clamp(0.0, 1.0);
-          setState(() {
-            _levels.add(norm);
-            if (_levels.length > 60) _levels.removeAt(0);
-          });
-        });
-  }
-
-  /// Stop recording and discard the audio without transcribing (the red X
-  /// shown while recording, matching the edit-text panel).
-  Future<void> _discardRecording() async {
-    await _ampSub?.cancel();
-    _ampSub = null;
-    await _audioRecorder.stop();
-    if (mounted) {
-      setState(() {
-        _isRecording = false;
-        _levels.clear();
-      });
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    setState(() {
-      _isRecording = false;
-      _isInputLoading = true;
-    });
-
-    await _ampSub?.cancel();
-    _ampSub = null;
-    if (_recordPath == null) return;
-
-    await _audioRecorder.stop();
-
-    final file = File(_recordPath!);
-    if (!file.existsSync()) {
-      setState(() => _isInputLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Recording failed.")));
-      }
-      return;
-    }
-
-    try {
-      final sttService = GoogleSpeechToTextService(
-        dotenv.env['GOOGLE_STT_KEY']!,
-      );
-      final result = await sttService.transcribeWithConfidence(
-        file,
-        languageCode: _localeFor(_rightLang),
-      );
-      final transcript = result.text;
-      debugPrint(
-        'DEBUG: Transcript "$transcript" (confidence ${result.confidence})',
-      );
-
-      // Low confidence => the wrong language was likely spoken.
-      if (transcript.trim().isNotEmpty &&
-          result.confidence > 0 &&
-          result.confidence < 0.6) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                AppLocalizations.of(context)!.speakCorrectLanguage,
-              ),
-            ),
-          );
-        }
-      } else if (transcript.trim().isNotEmpty) {
-        final old = _inputController.text.trim();
-        final newText = ('$old ${transcript.trim()}').trim();
-
-        setState(() {
-          _inputController.text = newText;
-          _inputController.selection = TextSelection.fromPosition(
-            TextPosition(offset: _inputController.text.length),
-          );
-        });
-      }
-    } catch (e) {
-      debugPrint('Transcription error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Transcription failed: $e")));
-      }
-    } finally {
-      if (mounted) setState(() => _isInputLoading = false);
-    }
+  /// Opens the exact same edit/recording panel used on the conversation page
+  /// (Markus, 2026-07-11: "why aren't you copying them one to one here to
+  /// the edit mode of the document page" — tapping edit or mic on this page
+  /// now switches to that identical panel instead of recording inline here).
+  /// [autoStartRecording] is set when opened via the mic icon specifically,
+  /// so recording begins immediately rather than requiring another tap.
+  void _showEditModal({bool autoStartRecording = false}) {
+    _ttsAudioPlayer?.stop();
+    final controller = TextEditingController(text: _inputController.text);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return SafeArea(
+          child: EditTextModal(
+            controller: controller,
+            fromLang: _rightLang,
+            toLang: _leftLang,
+            gemini: _gemini,
+            autoStartRecording: autoStartRecording,
+            isTextInLanguage:
+                (text) => isTextInLanguage(text, _langLabels[_rightLang]!, _gemini),
+            onEdited: ({required String edited, required String translated}) {
+              setState(() {
+                _inputController.text = edited;
+                _translatedText = translated;
+                DocumentTranslationState.inputText = edited;
+                DocumentTranslationState.translatedText = translated;
+              });
+            },
+          ),
+        );
+      },
+    ).whenComplete(controller.dispose);
   }
 
   void _onInputChanged() {
@@ -884,50 +783,14 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
     );
   }
 
-  /// The mic/record control: a single mic icon when idle, or a discard (X) +
-  /// confirm (check) pair plus a wide waveform filling the remaining space
-  /// while recording — same layout and icons as the tuned edit-text panel
-  /// (Markus, 2026-07-10: "use exactly the same logic like we have in the
-  /// Edit panel"; 5px between icons, 20px before the waveform).
-  Widget _recordingControl(double iconSize) {
-    if (!_isRecording) {
-      return GestureDetector(
-        onTap: () async {
-          if (await Permission.microphone.request().isGranted) {
-            await _startRecording();
-          } else if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Microphone permission denied")),
-            );
-          }
-        },
-        // Matches the mic icon used everywhere else (edit_recording_modal.dart)
-        // — this one was never updated (Markus, 2026-07-11: "mic hasn't changed").
-        child: Image.asset('assets/images/b_microphone.png', width: iconSize),
-      );
-    }
-    return Expanded(
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: _discardRecording,
-            child: Image.asset(
-              'assets/png24/black/b_close.png',
-              width: iconSize,
-            ),
-          ),
-          const SizedBox(width: 5),
-          GestureDetector(
-            onTap: _stopRecording,
-            child: Image.asset(
-              'assets/png24/black/b_check.png',
-              width: iconSize,
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(child: AmpWaveform(levels: _levels)),
-        ],
-      ),
+  /// Tapping mic switches straight to the edit panel and starts recording
+  /// there (Markus, 2026-07-11: "when you clicks on record, the microphone,
+  /// it will switch to the edit mode and we'll start to record" — recording
+  /// must not happen inline in this view, only inside the shared modal).
+  Widget _micControl(double iconSize) {
+    return GestureDetector(
+      onTap: () => _showEditModal(autoStartRecording: true),
+      child: Image.asset('assets/images/b_microphone.png', width: iconSize),
     );
   }
 
@@ -1002,23 +865,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                                   fontSize: 25 * _zoomLevel,
                                   color: Colors.grey,
                                 ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      // Full-box spinner while the recording is transcribed,
-                      // matching the conversation page.
-                      if (_isInputLoading)
-                        Positioned.fill(
-                          child: Container(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            alignment: Alignment.center,
-                            child: const SizedBox(
-                              width: 44,
-                              height: 44,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                valueColor: AlwaysStoppedAnimation(navGreen),
                               ),
                             ),
                           ),
@@ -1117,19 +963,18 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                               ),
                             ),
                             const SizedBox(width: 20),
-                            // Edit — focuses the input field (opens the keyboard).
+                            // Edit — opens the shared edit panel (Markus,
+                            // 2026-07-11: "clicking on the pencil, it will go
+                            // to the edit mode").
                             GestureDetector(
-                              onTap:
-                                  () => FocusScope.of(
-                                    context,
-                                  ).requestFocus(_inputFocusNode),
+                              onTap: () => _showEditModal(),
                               child: Image.asset(
                                 'assets/png24/black/b_edit.png',
                                 width: iconSize,
                               ),
                             ),
                             const SizedBox(width: 20),
-                            _recordingControl(iconSize),
+                            _micControl(iconSize),
                           ],
                         ),
                       ),
@@ -1210,8 +1055,8 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage>
                               ),
                               const SizedBox(width: 18),
 
-                              // 🎙 Mic icon / discard+confirm+waveform
-                              _recordingControl(iconSize),
+                              // 🎙 Mic icon — opens the shared edit panel
+                              _micControl(iconSize),
                             ],
                           ),
                         ),

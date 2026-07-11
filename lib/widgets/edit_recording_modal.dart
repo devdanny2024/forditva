@@ -24,6 +24,11 @@ class EditTextModal extends StatefulWidget {
   final Language toLang;
   final GeminiTranslator gemini;
   final OnEditAndTranslate onEdited;
+  // Starts recording immediately once the modal opens — used when the caller
+  // opened this modal specifically by tapping a microphone icon rather than
+  // an edit/pencil icon (Markus, 2026-07-11: tapping mic on the Document page
+  // should switch to this exact panel AND start recording).
+  final bool autoStartRecording;
 
   const EditTextModal({
     super.key,
@@ -33,6 +38,7 @@ class EditTextModal extends StatefulWidget {
     required this.fromLang,
     required this.toLang,
     required this.gemini,
+    this.autoStartRecording = false,
   });
 
   @override
@@ -66,6 +72,7 @@ class _EditTextModalState extends State<EditTextModal> {
       if (mounted) {
         // Ensure the widget is still in the tree
         _moveCursorToEnd();
+        if (widget.autoStartRecording) _onMicTap();
       }
     });
   }
