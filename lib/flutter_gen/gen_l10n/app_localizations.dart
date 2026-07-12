@@ -567,6 +567,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} WIUs remaining'**
   String wiuRemaining(Object count);
+
+  /// No description provided for @legalPrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Legal & Privacy'**
+  String get legalPrivacyTitle;
+
+  /// No description provided for @legalPrivacyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The \"fordítva\" app is completely ad-free and does not store any personal profiles or location data. To learn how we process your inputs (such as voice or image data) purely temporarily and how the anonymous WIU credit system works, you can view our full privacy policy at any time.'**
+  String get legalPrivacyBody;
+
+  /// No description provided for @openPrivacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Privacy Policy'**
+  String get openPrivacyPolicy;
 }
 
 class _AppLocalizationsDelegate

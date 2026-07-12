@@ -258,4 +258,14 @@ class AppLocalizationsHu extends AppLocalizations {
   String wiuRemaining(Object count) {
     return 'Még $count WIU van hátra';
   }
+
+  @override
+  String get legalPrivacyTitle => 'Jogi tudnivalók és Adatvédelem';
+
+  @override
+  String get legalPrivacyBody =>
+      'A „fordítva” alkalmazás teljesen reklámmentesen működik, és nem ment el rólad személyes profilokat vagy helyadatokat. Ha szeretnéd megtudni, hogyan dolgozzuk fel a beviteleidet (például a hang- vagy képadatokat) tisztán ideiglenesen, és hogyan működik az anonim WIU-kreditrendszer, bármikor megtekintheted a teljes adatvédelmi nyilatkozatunkat.';
+
+  @override
+  String get openPrivacyPolicy => 'Adatvédelmi nyilatkozat megnyitása';
 }

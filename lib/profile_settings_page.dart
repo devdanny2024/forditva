@@ -26,6 +26,10 @@ const Color _navOrange = Color(0xFFCC8A2E);
 
 const String _profileUrl = 'https://wir-in-ungarn.hu';
 
+// Markus sent the section text/button labels on 2026-07-11 but left the
+// actual link empty ("(Link: )") — fill this in once he sends the real URL.
+const String _privacyPolicyUrl = '';
+
 // Language names are shown as endonyms regardless of UI language.
 const List<String> _languages = ['Deutsch', 'English', 'Magyar'];
 
@@ -176,6 +180,25 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     }
   }
 
+  Future<void> _openPrivacyPolicy() async {
+    if (_privacyPolicyUrl.isEmpty) {
+      // Markus hasn't sent the real link yet — fail loud instead of
+      // launching an empty/invalid URL.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Privacy policy link not set yet')),
+      );
+      return;
+    }
+    final uri = Uri.parse(_privacyPolicyUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_loc.couldNotOpenPage)));
+    }
+  }
+
   // ─── build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -214,6 +237,9 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
 
           _sectionHeader(_loc.languageLearning),
           _padded(_languageLearning()),
+
+          _sectionHeader(_loc.legalPrivacyTitle),
+          _padded(_legalPrivacy()),
           const SizedBox(height: 28),
         ],
       ),
@@ -563,6 +589,36 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
           ),
           child: Text(
             _loc.gotoProfile,
+            style: GoogleFonts.robotoCondensed(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _legalPrivacy() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(_loc.legalPrivacyBody, style: _greenBody),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _openPrivacyPolicy,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _navGreen,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Text(
+            _loc.openPrivacyPolicy,
             style: GoogleFonts.robotoCondensed(
               fontSize: 17,
               fontWeight: FontWeight.w600,

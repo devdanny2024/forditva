@@ -260,4 +260,14 @@ class AppLocalizationsDe extends AppLocalizations {
   String wiuRemaining(Object count) {
     return 'Noch $count WIUs übrig';
   }
+
+  @override
+  String get legalPrivacyTitle => 'Rechtliches & Datenschutz';
+
+  @override
+  String get legalPrivacyBody =>
+      'Die App „fordítva“ arbeitet komplett werbefrei und speichert keine persönlichen Profile oder Standortdaten von dir. Um zu erfahren, wie wir deine Eingaben (wie Sprach- oder Bilddaten) rein flüchtig verarbeiten und wie das anonyme WIU-Guthabensystem funktioniert, kannst du jederzeit unsere vollständige Datenschutzerklärung einsehen.';
+
+  @override
+  String get openPrivacyPolicy => 'Datenschutzerklärung öffnen';
 }
