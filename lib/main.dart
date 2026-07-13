@@ -286,16 +286,20 @@ class _MainScreenState extends State<MainScreen> {
       // Markus, 2026-07-12: the white area behind the nav-bar pill should
       // stay white, just be taller (see bottomNavigationBar's top padding).
       backgroundColor: Colors.white,
-      body: MediaQuery.removePadding(
-        context: context,
-        removeTop: true,
-        child: Padding(
-          // Keep a safe top clearance under the status bar, but drop the bottom
-          // gap so the cards sit lower, closer to the menu (Markus: move the
-          // cards down toward the menu, too much space).
-          padding: const EdgeInsets.fromLTRB(0, 16, 0, 0),
-          child: _pages[_currentPage],
+      // A flat 16px top clearance (with the real inset stripped via
+      // MediaQuery.removePadding) was only ever tuned against Android's
+      // shorter status bar. iOS notches/Dynamic Island need 44-59pt, so the
+      // card was starting almost under the status bar there (Markus,
+      // 2026-07-13: "touching the network bar on top"). Use the device's
+      // real safe-area inset instead of a hardcoded guess.
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(
+          0,
+          16 + MediaQuery.of(context).viewPadding.top,
+          0,
+          0,
         ),
+        child: _pages[_currentPage],
       ),
 
       bottomNavigationBar: Padding(
