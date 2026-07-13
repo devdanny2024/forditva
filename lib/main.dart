@@ -299,17 +299,15 @@ class _MainScreenState extends State<MainScreen> {
       ),
 
       bottomNavigationBar: Padding(
-        // Lift the bar above the Android system navigation/gesture bar.
-        // Top padding was briefly 20 (2026-07-12, to make the white area
-        // behind the pill on list pages taller), but that's a GLOBAL gap
-        // that stacks with each page's own bottom padding — Image page
-        // already reserves 24px of its own, so the two combined produced a
-        // visibly oversized gap there (Markus, 2026-07-12, photo taken after
-        // testing that build). Reverted to 0; the list-page fix needs a
-        // page-local change instead of a global one.
+        // Lift the bar above the Android system navigation/gesture bar. Top
+        // padding gives visible breathing room above the pill (Markus,
+        // 2026-07-12/13: confirmed on iOS TestFlight he wants this gap).
+        // This is a GLOBAL gap, so page-local bottom padding must not stack
+        // on top of it — see image_page.dart, which had its own 24px
+        // removed for exactly that reason.
         padding: EdgeInsets.fromLTRB(
           16,
-          0,
+          20,
           16,
           20 + MediaQuery.of(context).viewPadding.bottom,
         ),
