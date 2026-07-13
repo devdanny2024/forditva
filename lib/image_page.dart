@@ -1282,7 +1282,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             ),
           ),
 
-          const SizedBox(height: 10),
+          // Two flag stripes tall (flagSize 50 below, so ~33px), per
+          // Markus's explicit measurement (2026-07-13, red-lined screenshot).
+          const SizedBox(height: 33),
 
           // ─── Language switcher (BOTTOM, just like Document page) ──────────
           SizedBox(

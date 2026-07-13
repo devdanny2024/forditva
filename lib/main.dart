@@ -292,10 +292,13 @@ class _MainScreenState extends State<MainScreen> {
       // card was starting almost under the status bar there (Markus,
       // 2026-07-13: "touching the network bar on top"). Use the device's
       // real safe-area inset instead of a hardcoded guess.
+      // Markus, 2026-07-13: still touching the status bar on some pages even
+      // with the safe-area fix; asked for a consistent extra 10-50px buffer
+      // below the real inset on every page. 30 splits that range.
       body: Padding(
         padding: EdgeInsets.fromLTRB(
           0,
-          16 + MediaQuery.of(context).viewPadding.top,
+          30 + MediaQuery.of(context).viewPadding.top,
           0,
           0,
         ),
@@ -303,17 +306,20 @@ class _MainScreenState extends State<MainScreen> {
       ),
 
       bottomNavigationBar: Padding(
-        // Lift the bar above the Android system navigation/gesture bar. Top
-        // padding gives visible breathing room above the pill (Markus,
-        // 2026-07-12/13: confirmed on iOS TestFlight he wants this gap).
+        // Lift the bar above the Android system navigation/gesture bar.
+        // Top padding gives visible breathing room above the pill — sized to
+        // two flag stripes (flagSize 50 in image_page.dart, so ~33px), per
+        // Markus's explicit measurement (2026-07-13, red-lined screenshot).
         // This is a GLOBAL gap, so page-local bottom padding must not stack
         // on top of it — see image_page.dart, which had its own 24px
-        // removed for exactly that reason.
+        // removed for exactly that reason. Bottom padding trimmed from a
+        // flat +20 to +8, since the system inset alone already clears the
+        // home indicator and the extra was flagged as wasted space.
         padding: EdgeInsets.fromLTRB(
           16,
-          20,
+          33,
           16,
-          20 + MediaQuery.of(context).viewPadding.bottom,
+          8 + MediaQuery.of(context).viewPadding.bottom,
         ),
         child: Container(
           // antiAliasWithSaveLayer composites the rounded-corner children

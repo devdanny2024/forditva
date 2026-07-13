@@ -678,7 +678,10 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
               builder: (context, constraints) {
                 final totalHeight = constraints.maxHeight;
                 const topMargin = 20.0;
-                const bottomMargin = 80.0;
+                // Was 80 — combined with the global nav-bar gap (main.dart)
+                // this produced a much bigger gap than intended (Markus,
+                // 2026-07-13: "same for here", red-marked screenshot).
+                const bottomMargin = 40.0;
                 const spacingBetween = 10.0;
                 // Fixed content height of the language-switcher row below the
                 // top card: padding (15+15) + the flag/text row (~40).
