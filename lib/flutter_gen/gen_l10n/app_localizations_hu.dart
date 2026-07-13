@@ -268,4 +268,13 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get openPrivacyPolicy => 'Adatvédelmi nyilatkozat megnyitása';
+
+  @override
+  String get grammarExplanation => 'Nyelvtani magyarázat';
+
+  @override
+  String get keyVocabulary => 'Fontos szókincs';
+
+  @override
+  String get translationHeading => 'Fordítás';
 }

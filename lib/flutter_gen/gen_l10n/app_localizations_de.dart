@@ -270,4 +270,13 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get openPrivacyPolicy => 'Datenschutzerklärung öffnen';
+
+  @override
+  String get grammarExplanation => 'Grammatikerklärung';
+
+  @override
+  String get keyVocabulary => 'Wichtiger Wortschatz';
+
+  @override
+  String get translationHeading => 'Übersetzung';
 }

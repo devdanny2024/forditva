@@ -65,7 +65,6 @@ class _EditTextModalState extends State<EditTextModal> {
   void initState() {
     super.initState();
     _audioRecorder = AudioRecorder();
-    widget.controller.addListener(_moveCursorToEnd);
 
     // Use addPostFrameCallback to set cursor after the initial build and focus
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -95,7 +94,6 @@ class _EditTextModalState extends State<EditTextModal> {
   @override
   void dispose() {
     _ampSub?.cancel();
-    widget.controller.removeListener(_moveCursorToEnd);
     _audioRecorder.dispose(); // Dispose of the audio recorder
     super.dispose();
   }

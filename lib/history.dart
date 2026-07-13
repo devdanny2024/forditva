@@ -120,7 +120,10 @@ class _HistoryPageState extends State<HistoryPage> {
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  // Extra bottom clearance so the last card never sits behind
+                  // the floating nav bar (Markus, 2026-07-12: screenshot
+                  // showed "Unabhängigkeit" cut off by the "History" pill).
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
                     final entry = filtered[i];

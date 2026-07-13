@@ -585,6 +585,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open Privacy Policy'**
   String get openPrivacyPolicy;
+
+  /// No description provided for @grammarExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'Grammar Explanation'**
+  String get grammarExplanation;
+
+  /// No description provided for @keyVocabulary.
+  ///
+  /// In en, this message translates to:
+  /// **'Key Vocabulary'**
+  String get keyVocabulary;
+
+  /// No description provided for @translationHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation'**
+  String get translationHeading;
 }
 
 class _AppLocalizationsDelegate

@@ -137,7 +137,11 @@ class _RecordingModalState extends State<RecordingModal> {
         if ((status == 'notListening' || status == 'done') &&
             _isRecording &&
             mounted) {
-          _restartListening();
+          // The OS is stopping us mid-session, not because of silence — the
+          // user is likely still talking. Restart with minimal delay so the
+          // gap doesn't swallow the words being spoken right now (Markus,
+          // 2026-07-12: infinity mode breaking/losing the last 1.5-2s).
+          _restartListening(immediate: true);
         }
       },
       onError: (e) {
@@ -183,8 +187,7 @@ class _RecordingModalState extends State<RecordingModal> {
         _energy = 1.0;
         setState(() {
           // Prepend anything committed from earlier sessions (infinity mode).
-          final words = res.recognizedWords;
-          _transcript = _committed.isEmpty ? words : '$_committed $words';
+          _transcript = _mergeWithoutOverlap(_committed, res.recognizedWords);
         });
         if (widget.onPartialTranscript != null &&
             _transcript.trim().isNotEmpty) {
@@ -201,6 +204,35 @@ class _RecordingModalState extends State<RecordingModal> {
       listenFor: const Duration(minutes: 5),
       pauseFor: const Duration(minutes: 5),
     );
+  }
+
+  /// Appends [newWords] to [committed], stripping any leading words that
+  /// duplicate the tail of [committed]. A recognizer restart (infinity mode)
+  /// sometimes re-hears a bit of audio the previous session already
+  /// transcribed, which duplicated whole clauses in the transcript (Markus,
+  /// 2026-07-12, screenshot showing the same sentence twice).
+  String _mergeWithoutOverlap(String committed, String newWords) {
+    if (committed.isEmpty) return newWords;
+    if (newWords.trim().isEmpty) return committed;
+    final committedWords = committed.split(RegExp(r'\s+'));
+    final newWordsList = newWords.trim().split(RegExp(r'\s+'));
+    final maxOverlap =
+        committedWords.length < newWordsList.length
+            ? committedWords.length
+            : newWordsList.length;
+    for (var overlap = maxOverlap; overlap > 0; overlap--) {
+      final tail =
+          committedWords
+              .sublist(committedWords.length - overlap)
+              .join(' ')
+              .toLowerCase();
+      final head = newWordsList.sublist(0, overlap).join(' ').toLowerCase();
+      if (tail == head) {
+        final remainder = newWordsList.sublist(overlap).join(' ');
+        return remainder.isEmpty ? committed : '$committed $remainder';
+      }
+    }
+    return '$committed $newWords';
   }
 
   /// If the recognizer produces no signal at all within [_stallTimeout], it
@@ -221,7 +253,7 @@ class _RecordingModalState extends State<RecordingModal> {
   /// that it stopped picking up voice at all (the infinity-mode bug). The
   /// transcript so far is committed so words accumulate across sessions.
   bool _restarting = false;
-  Future<void> _restartListening() async {
+  Future<void> _restartListening({bool immediate = false}) async {
     if (_restarting || !mounted || !_isRecording) return;
     // Restarting mid-utterance is only meant to keep infinity mode listening
     // through long pauses. In normal mode, once real words have already been
@@ -237,7 +269,13 @@ class _RecordingModalState extends State<RecordingModal> {
     try {
       await _speech.stop();
     } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 350));
+    // The 350ms delay avoids restarting so fast the recognizer stops picking
+    // up voice at all — but that same delay is a dead gap that can swallow
+    // words if the OS stopped us mid-speech rather than during real silence.
+    // Use a much shorter gap for that case (Markus, 2026-07-12).
+    await Future.delayed(
+      immediate ? const Duration(milliseconds: 60) : const Duration(milliseconds: 350),
+    );
     if (mounted && _isRecording) _listen();
     _restarting = false;
   }

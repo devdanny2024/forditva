@@ -2,7 +2,7 @@ name: forditva
 description: "A new Flutter project."
 publish_to: "none"
 
-version: 1.0.1+21
+version: 1.0.1+33
 
 environment:
   sdk: ^3.7.2
@@ -42,6 +42,8 @@ dependencies:
   auto_size_text: ^3.0.0
   intl: ^0.20.0
   image: ^4.5.4
+  flutter_secure_storage: ^9.2.2
+  android_id: ^0.4.0
 
 dev_dependencies:
   flutter_test:

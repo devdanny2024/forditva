@@ -85,5 +85,8 @@
   },
   "legalPrivacyTitle": "Jogi tudnivalók és Adatvédelem",
   "legalPrivacyBody": "A „fordítva” alkalmazás teljesen reklámmentesen működik, és nem ment el rólad személyes profilokat vagy helyadatokat. Ha szeretnéd megtudni, hogyan dolgozzuk fel a beviteleidet (például a hang- vagy képadatokat) tisztán ideiglenesen, és hogyan működik az anonim WIU-kreditrendszer, bármikor megtekintheted a teljes adatvédelmi nyilatkozatunkat.",
-  "openPrivacyPolicy": "Adatvédelmi nyilatkozat megnyitása"
+  "openPrivacyPolicy": "Adatvédelmi nyilatkozat megnyitása",
+  "grammarExplanation": "Nyelvtani magyarázat",
+  "keyVocabulary": "Fontos szókincs",
+  "translationHeading": "Fordítás"
 }

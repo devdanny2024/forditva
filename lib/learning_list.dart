@@ -226,7 +226,9 @@ class _LearningListPageState extends State<LearningListPage> {
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  // Extra bottom clearance so the last card never sits behind
+                  // the floating nav bar (Markus, 2026-07-12).
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
                     final entry = filtered[i];

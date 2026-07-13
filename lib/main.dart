@@ -283,6 +283,9 @@ class _MainScreenState extends State<MainScreen> {
     final double iconSize = navBarHeight * 0.5; // 60% of nav-bar height
     return Scaffold(
       appBar: null,
+      // Markus, 2026-07-12: the white area behind the nav-bar pill should
+      // stay white, just be taller (see bottomNavigationBar's top padding).
+      backgroundColor: Colors.white,
       body: MediaQuery.removePadding(
         context: context,
         removeTop: true,
@@ -297,6 +300,13 @@ class _MainScreenState extends State<MainScreen> {
 
       bottomNavigationBar: Padding(
         // Lift the bar above the Android system navigation/gesture bar.
+        // Top padding was briefly 20 (2026-07-12, to make the white area
+        // behind the pill on list pages taller), but that's a GLOBAL gap
+        // that stacks with each page's own bottom padding — Image page
+        // already reserves 24px of its own, so the two combined produced a
+        // visibly oversized gap there (Markus, 2026-07-12, photo taken after
+        // testing that build). Reverted to 0; the list-page fix needs a
+        // page-local change instead of a global one.
         padding: EdgeInsets.fromLTRB(
           16,
           0,

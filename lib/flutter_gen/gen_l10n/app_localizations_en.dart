@@ -269,4 +269,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openPrivacyPolicy => 'Open Privacy Policy';
+
+  @override
+  String get grammarExplanation => 'Grammar Explanation';
+
+  @override
+  String get keyVocabulary => 'Key Vocabulary';
+
+  @override
+  String get translationHeading => 'Translation';
 }

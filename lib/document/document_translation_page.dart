@@ -1172,24 +1172,28 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                         height: 80,
                       ),
                     )
-                    : Stack(
-                      children: [
-                        SingleChildScrollView(
-                          controller: _scrollController,
-                          child: Text(
-                            _translatedText,
-                            style: GoogleFonts.robotoCondensed(
-                              fontSize:
-                                  dynamicFontSize(_translatedText) *
-                                  _zoomLevel,
-                              height: 1.2,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black,
-                              letterSpacing: -0.3,
+                    : GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _showEditModal(),
+                      child: Stack(
+                        children: [
+                          SingleChildScrollView(
+                            controller: _scrollController,
+                            child: Text(
+                              _translatedText,
+                              style: GoogleFonts.robotoCondensed(
+                                fontSize:
+                                    dynamicFontSize(_translatedText) *
+                                    _zoomLevel,
+                                height: 1.2,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black,
+                                letterSpacing: -0.3,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
           ),
           Row(
@@ -1245,13 +1249,20 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                 },
                 child:
                     _isSpeaking
-                        // No black stop-square asset exists (w_stop.png is
-                        // white, made for the dark conversation-page card,
-                        // and would be invisible on this light background).
-                        ? Icon(
-                          Icons.stop_rounded,
-                          color: Colors.black,
-                          size: iconSize,
+                        // Same stop-square asset the conversation page uses
+                        // (Markus, 2026-07-12: only icons from his asset
+                        // folder), tinted black since w_stop.png is white and
+                        // was made for the dark conversation-page card.
+                        ? ColorFiltered(
+                          colorFilter: const ColorFilter.mode(
+                            Colors.black,
+                            BlendMode.srcIn,
+                          ),
+                          child: Image.asset(
+                            'assets/images/w_stop.png',
+                            width: iconSize,
+                            height: iconSize,
+                          ),
                         )
                         : Image.asset(
                           'assets/png24/black/b_speaker.png',

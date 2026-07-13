@@ -85,5 +85,8 @@
   },
   "legalPrivacyTitle": "Rechtliches & Datenschutz",
   "legalPrivacyBody": "Die App „fordítva“ arbeitet komplett werbefrei und speichert keine persönlichen Profile oder Standortdaten von dir. Um zu erfahren, wie wir deine Eingaben (wie Sprach- oder Bilddaten) rein flüchtig verarbeiten und wie das anonyme WIU-Guthabensystem funktioniert, kannst du jederzeit unsere vollständige Datenschutzerklärung einsehen.",
-  "openPrivacyPolicy": "Datenschutzerklärung öffnen"
+  "openPrivacyPolicy": "Datenschutzerklärung öffnen",
+  "grammarExplanation": "Grammatikerklärung",
+  "keyVocabulary": "Wichtiger Wortschatz",
+  "translationHeading": "Übersetzung"
 }

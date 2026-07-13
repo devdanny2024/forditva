@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/gemini_translation_service.dart';
 import '../services/learning_store.dart';
 import '../utils/utils.dart';
@@ -105,9 +106,10 @@ class _TutorDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(width: 0.5, color: Colors.black),
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(width: 2, color: Colors.black),
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -141,9 +143,9 @@ class _TutorDialog extends StatelessWidget {
                   ),
                   IconButton(
                     icon: Image.asset(
-                      'assets/png24/black/b_close.png',
-                      width: 24,
-                      height: 24,
+                      'assets/images/close_red.png',
+                      width: 28,
+                      height: 28,
                     ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
@@ -160,14 +162,17 @@ class _TutorDialog extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _section(
-                              'Grammar Explanation',
+                              AppLocalizations.of(context)!.grammarExplanation,
                               parsed['grammar_explanation'],
                             ),
                             _section(
-                              'Key Vocabulary',
+                              AppLocalizations.of(context)!.keyVocabulary,
                               parsed['key_vocabulary'],
                             ),
-                            _section('Translation', parsed['translation']),
+                            _section(
+                              AppLocalizations.of(context)!.translationHeading,
+                              parsed['translation'],
+                            ),
                             const SizedBox(height: 16),
                           ],
                         ),

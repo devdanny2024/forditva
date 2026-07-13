@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:forditva/conversation_state.dart';
 import 'package:forditva/document/document_translation_state.dart';
 import 'package:forditva/models/language_enum.dart';
 import 'package:forditva/services/gemini_tts_service.dart';
@@ -730,7 +731,17 @@ class _TextPageState extends State<TextPage> {
   }) async {
     print('Opening recording modal - top? $isTopPanel');
 
+    // Interrupt any audio currently playing so it doesn't keep talking over
+    // the new recording (Markus, 2026-07-12: tapping record should pause all
+    // playing audio immediately, same as the edit panel already does).
+    _inputAudioPlayer?.stop();
+    _outputAudioPlayer?.stop();
+    _audioPlayer?.stop();
+
     setState(() {
+      _isInputPlaying = false;
+      _isOutputPlaying = false;
+      _isAudioPlaying = false;
       if (isTopPanel) {
         _isTopRecording = true;
       } else {
@@ -830,6 +841,17 @@ class _TextPageState extends State<TextPage> {
       ..setSpeechRate(0.5)
       ..setVolume(1.0)
       ..setPitch(1.0);
+
+    // Restore whatever was on screen before this page's State got torn down
+    // by a tab switch (see conversation_state.dart).
+    _inputController.text = ConversationState.inputText;
+    _translation = ConversationState.translation;
+    if (ConversationState.leftLang != null) {
+      _leftLanguage = ConversationState.leftLang!;
+    }
+    if (ConversationState.rightLang != null) {
+      _rightLanguage = ConversationState.rightLang!;
+    }
   }
 
   void _copyText(String text) {
@@ -908,6 +930,11 @@ class _TextPageState extends State<TextPage> {
 
   @override
   void dispose() {
+    ConversationState.inputText = _inputController.text;
+    ConversationState.translation = _translation;
+    ConversationState.leftLang = _leftLanguage;
+    ConversationState.rightLang = _rightLanguage;
+
     _audioPlayer?.dispose();
 
     _inputAudioPlayer?.dispose();

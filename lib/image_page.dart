@@ -566,6 +566,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           sampleText = out;
         }
 
+        // Short samples (brand names, page titles, a handful of words) are
+        // the recurring cause of false-positive mismatches — genuine
+        // Hungarian read as Portuguese/German, now genuine German read as
+        // English (Markus, 2026-07-12: a clearly-German site screenshot).
+        // Skip the check rather than interrupt the user over an unreliable
+        // read on too little text.
+        if (sampleText.trim().length >= 20) {
         final rawDetected = await _gemini.detectLanguage(sampleText);
 
         // Normalize Gemini result. Guard the substring so a short/empty result
@@ -655,6 +662,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           _resultText = '';
         });
         return;
+        }
         }
       }
 

@@ -91,5 +91,8 @@
   },
   "legalPrivacyTitle": "Legal & Privacy",
   "legalPrivacyBody": "The \"fordítva\" app is completely ad-free and does not store any personal profiles or location data. To learn how we process your inputs (such as voice or image data) purely temporarily and how the anonymous WIU credit system works, you can view our full privacy policy at any time.",
-  "openPrivacyPolicy": "Open Privacy Policy"
+  "openPrivacyPolicy": "Open Privacy Policy",
+  "grammarExplanation": "Grammar Explanation",
+  "keyVocabulary": "Key Vocabulary",
+  "translationHeading": "Translation"
 }
