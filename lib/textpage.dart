@@ -16,6 +16,7 @@ import 'package:forditva/widgets/error_dialog.dart';
 import 'package:forditva/widgets/wiu_gate.dart';
 import 'package:forditva/services/gemini_translation_service.dart'; // your Gemini client
 import 'package:forditva/services/third_language_pref.dart';
+import 'package:forditva/spacing.dart';
 import 'package:forditva/utils/debouncer.dart'; // if you created it separately
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/edit_recording_modal.dart';
@@ -968,8 +969,12 @@ class _TextPageState extends State<TextPage> {
               // --- UPDATED: Top (input) card ---
               Positioned(
                 top: 0,
-                left: 16,
-                right: 16,
+                // Was 16 — narrower than it needed to be, leaving the card
+                // visibly smaller than the rest of the screen width (Markus,
+                // 2026-07-14: side-by-side mockup showing the whole card
+                // bigger). Down to the shared scale's sm tier.
+                left: Spacing.sm,
+                right: Spacing.sm,
                 height: halfHeight + switchHalf, // down to the bottom of the switch
                 child: TranslationCard(
                   inverted: true,
@@ -1041,8 +1046,8 @@ class _TextPageState extends State<TextPage> {
               // --- UPDATED: Bottom (output) card ---
               Positioned(
                 top: halfHeight - switchHalf, // up to the top of the switch
-                left: 16,
-                right: 16,
+                left: Spacing.sm,
+                right: Spacing.sm,
                 bottom: 0, // reach the bottom edge of the screen
                 child: TranslationCard(
                   inverted: false,
