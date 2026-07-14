@@ -1284,10 +1284,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             ),
           ),
 
-          // Was 33 (two flag stripes), but combined with the nav-bar's own
-          // gap below the switcher it still read as excessive (Markus,
-          // 2026-07-14). Down to the shared scale's md tier.
-          const SizedBox(height: Spacing.md),
+          // Was 33 (two flag stripes), then 16 (md) — still read as too
+          // much combined with the nav-bar's own gap below the switcher
+          // (Markus, 2026-07-14, after testing +39). Down to sm.
+          const SizedBox(height: Spacing.sm),
 
           // ─── Language switcher (BOTTOM, just like Document page) ──────────
           SizedBox(

@@ -308,17 +308,16 @@ class _MainScreenState extends State<MainScreen> {
 
       bottomNavigationBar: Padding(
         // Lift the bar above the Android system navigation/gesture bar. Top
-        // padding gives breathing room above the pill; was 33 (two flag
-        // stripes) but combined with each page's own gap above the switcher
-        // it still read as excessive (Markus, 2026-07-14), so it's down to
-        // the shared scale's md tier. This is a GLOBAL gap, so page-local
-        // bottom padding must not stack on top of it — see image_page.dart,
-        // which had its own removed for exactly that reason. Bottom padding
-        // is sm, since the system inset alone already clears the home
-        // indicator.
+        // padding gives breathing room above the pill: 33 -> 16 -> 8, still
+        // read as too much at 16 combined with each page's own gap above
+        // the switcher (Markus, 2026-07-14, after testing +39). This is a
+        // GLOBAL gap, so page-local bottom padding must not stack on top of
+        // it — see image_page.dart, which had its own removed for exactly
+        // that reason. Bottom padding is xs, since the system inset alone
+        // already clears the home indicator.
         padding: EdgeInsets.fromLTRB(
           16,
-          Spacing.md,
+          Spacing.sm,
           16,
           Spacing.sm + MediaQuery.of(context).viewPadding.bottom,
         ),

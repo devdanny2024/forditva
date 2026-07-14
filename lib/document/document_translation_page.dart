@@ -691,7 +691,6 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                 // supplies the bottom gap).
                 const topMargin = 8.0;
                 const bottomMargin = 8.0;
-                const spacingBetween = 10.0;
                 // Fixed content height of the language-switcher row below the
                 // top card: padding (15+15) + the flag/text row (~40).
                 const switcherHeight = 70.0;
@@ -702,10 +701,16 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                         // at half height, which left a large blank gap
                         // between the switcher and the keyboard.
                         ? totalHeight - topMargin - switcherHeight - 16.0
+                        // Was subtracting spacingBetween (10) here instead of
+                        // the switcher's real height (70), so the two cards
+                        // plus switcher always summed to ~60px more than the
+                        // container's actual height, forcing a scroll no
+                        // matter what the outer container sizing was (Markus,
+                        // 2026-07-14: "document is still scrolling").
                         : (totalHeight -
                                 topMargin -
                                 bottomMargin -
-                                spacingBetween) /
+                                switcherHeight) /
                             2;
 
                 return SingleChildScrollView(
