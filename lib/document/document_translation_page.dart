@@ -662,21 +662,28 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
     return MediaQuery.removeViewInsets(
       context: context,
       removeBottom: true,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Container(
-            width: cardWidth,
-            height:
-                MediaQuery.of(context).size.height - 10, // 👈 fills to bottom
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final totalHeight = constraints.maxHeight;
+      // The card height used to be MediaQuery.of(context).size.height (the
+      // full device screen), not this page's actual available space, so it
+      // always assumed more room than Scaffold really gave it and had to
+      // scroll to show everything, unlike the Image page which sizes to its
+      // real constraint and always fits (Markus, 2026-07-14: "there should
+      // be no scrolling like the document page, it must fit").
+      child: LayoutBuilder(
+        builder: (context, outerConstraints) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                width: cardWidth,
+                height: outerConstraints.maxHeight - 10,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final totalHeight = constraints.maxHeight;
                 // Trimmed so this page's top/bottom gaps line up with the
                 // others (spacing audit, 2026-07-13): topMargin 20 -> 8 (the
                 // global body padding already supplies the main top gap),
@@ -730,10 +737,12 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                     ],
                   ),
                 );
-              },
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
