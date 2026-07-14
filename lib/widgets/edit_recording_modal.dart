@@ -91,6 +91,34 @@ class _EditTextModalState extends State<EditTextModal> {
     }
   }
 
+  /// Inserts [text] wherever the user last placed the cursor, instead of
+  /// always appending to the end (Markus, 2026-07-14: paste/recorded
+  /// transcript should land at the cursor position, not the end of the
+  /// sentence). Falls back to appending at the end if the selection is
+  /// somehow invalid.
+  void _insertAtCursor(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final current = widget.controller.text;
+    final selection = widget.controller.selection;
+    final offset =
+        selection.isValid ? selection.start.clamp(0, current.length) : current.length;
+
+    final before = current.substring(0, offset);
+    final after = current.substring(offset);
+    final needsSpaceBefore =
+        before.isNotEmpty && !before.endsWith(' ') && !before.endsWith('\n');
+    final needsSpaceAfter =
+        after.isNotEmpty && !after.startsWith(' ') && !after.startsWith('\n');
+    final insertion =
+        '${needsSpaceBefore ? ' ' : ''}$trimmed${needsSpaceAfter ? ' ' : ''}';
+
+    widget.controller.value = TextEditingValue(
+      text: before + insertion + after,
+      selection: TextSelection.collapsed(offset: before.length + insertion.length),
+    );
+  }
+
   @override
   void dispose() {
     _ampSub?.cancel();
@@ -166,13 +194,8 @@ class _EditTextModalState extends State<EditTextModal> {
         _isSttLoading = false;
       });
       if ((transcript?.trim().isNotEmpty ?? false)) {
-        widget.controller.text =
-            ('${widget.controller.text.trim()} ${transcript?.trim() ?? ""}')
-                .trim();
-
-        // Force cursor to end of field (nice UX)
-        // This is handled by the listener, but an explicit call here after text change is also fine
-        _moveCursorToEnd();
+        // Lands at wherever the cursor was left, not always the end.
+        _insertAtCursor(transcript!.trim());
 
         setState(() {}); // Refresh font size, etc.
 
@@ -200,14 +223,12 @@ class _EditTextModalState extends State<EditTextModal> {
     setState(() {});
   }
 
-  /// Paste: append clipboard text into the field at the end.
+  /// Paste: inserts clipboard text at the cursor position.
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final pasted = data?.text?.trim() ?? '';
-    if (pasted.isEmpty) return;
-    final base = widget.controller.text.trim();
-    widget.controller.text = base.isEmpty ? pasted : '$base $pasted';
-    _moveCursorToEnd();
+    final pasted = data?.text ?? '';
+    if (pasted.trim().isEmpty) return;
+    _insertAtCursor(pasted);
     setState(() {});
   }
 
