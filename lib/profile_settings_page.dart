@@ -27,8 +27,8 @@ const Color _navOrange = Color(0xFFCC8A2E);
 const String _profileUrl = 'https://wir-in-ungarn.hu';
 
 // Markus sent the section text/button labels on 2026-07-11 but left the
-// actual link empty ("(Link: )") — fill this in once he sends the real URL.
-const String _privacyPolicyUrl = '';
+// actual link empty ("(Link: )"); real URL sent 2026-07-14.
+const String _privacyPolicyUrl = 'https://wir-in-ungarn.hu/datenschutz-forditva/';
 
 // Language names are shown as endonyms regardless of UI language.
 const List<String> _languages = ['Deutsch', 'English', 'Magyar'];
