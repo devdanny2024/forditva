@@ -1144,21 +1144,22 @@ class _TextPageState extends State<TextPage> {
                           },
                           // No pill: EN sits on the white card, so a
                           // black-outlined label + black-bordered flag.
-                          // Flag/text 59% bigger (Markus, 2026-07-14): flag
-                          // 30 -> 48, font 22 -> 35.
+                          // Flag/text bumped up (Markus, 2026-07-14): first
+                          // to 48/35, then dialed back to 42/30 (still too
+                          // big at 48/35).
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               borderedFlag(
                                 _leftLanguage,
                                 whiteBorder: false,
-                                size: 48,
+                                size: 42,
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 _leftLanguage.label,
                                 style: GoogleFonts.roboto(
-                                  fontSize: 35,
+                                  fontSize: 30,
                                   fontWeight: FontWeight.w900,
                                   color: Colors.black,
                                 ),
@@ -1243,13 +1244,13 @@ class _TextPageState extends State<TextPage> {
                                 borderedFlag(
                                   _rightLanguage,
                                   whiteBorder: true,
-                                  size: 48,
+                                  size: 42,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   _rightLanguage.label,
                                   style: GoogleFonts.roboto(
-                                    fontSize: 35,
+                                    fontSize: 30,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                   ),
