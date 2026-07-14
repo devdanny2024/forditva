@@ -292,14 +292,14 @@ class _MainScreenState extends State<MainScreen> {
       // shorter status bar. iOS notches/Dynamic Island need 44-59pt, so the
       // card was starting almost under the status bar there (Markus,
       // 2026-07-13: "touching the network bar on top"). Use the device's
-      // real safe-area inset instead of a hardcoded guess.
-      // Markus, 2026-07-13: still touching the status bar on some pages even
-      // with the safe-area fix; asked for a consistent extra 10-50px buffer
-      // below the real inset on every page. 30 splits that range.
+      // real safe-area inset instead of a hardcoded guess. The real inset
+      // alone already clears the status bar; the +30 buffer added on top of
+      // it (2026-07-13) was excess, producing a visibly oversized top gap
+      // on every page (Markus, 2026-07-14). Down to Spacing.sm.
       body: Padding(
         padding: EdgeInsets.fromLTRB(
           0,
-          30 + MediaQuery.of(context).viewPadding.top,
+          Spacing.sm + MediaQuery.of(context).viewPadding.top,
           0,
           0,
         ),
