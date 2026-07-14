@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'flutter_gen/gen_l10n/app_localizations.dart';
 import 'services/third_language_pref.dart';
+import 'spacing.dart';
 import 'widgets/copied_toast.dart';
 
 // Colors and constants
@@ -1283,9 +1284,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             ),
           ),
 
-          // Two flag stripes tall (flagSize 50 below, so ~33px), per
-          // Markus's explicit measurement (2026-07-13, red-lined screenshot).
-          const SizedBox(height: 33),
+          // Was 33 (two flag stripes), but combined with the nav-bar's own
+          // gap below the switcher it still read as excessive (Markus,
+          // 2026-07-14). Down to the shared scale's md tier.
+          const SizedBox(height: Spacing.md),
 
           // ─── Language switcher (BOTTOM, just like Document page) ──────────
           SizedBox(

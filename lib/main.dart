@@ -19,6 +19,7 @@ import 'profile_settings_page.dart';
 import 'services/level_pref.dart';
 import 'services/third_language_pref.dart';
 import 'services/token_balance.dart';
+import 'spacing.dart';
 import 'textpage.dart';
 
 // Colors and constants
@@ -306,20 +307,20 @@ class _MainScreenState extends State<MainScreen> {
       ),
 
       bottomNavigationBar: Padding(
-        // Lift the bar above the Android system navigation/gesture bar.
-        // Top padding gives visible breathing room above the pill — sized to
-        // two flag stripes (flagSize 50 in image_page.dart, so ~33px), per
-        // Markus's explicit measurement (2026-07-13, red-lined screenshot).
-        // This is a GLOBAL gap, so page-local bottom padding must not stack
-        // on top of it — see image_page.dart, which had its own 24px
-        // removed for exactly that reason. Bottom padding trimmed from a
-        // flat +20 to +8, since the system inset alone already clears the
-        // home indicator and the extra was flagged as wasted space.
+        // Lift the bar above the Android system navigation/gesture bar. Top
+        // padding gives breathing room above the pill; was 33 (two flag
+        // stripes) but combined with each page's own gap above the switcher
+        // it still read as excessive (Markus, 2026-07-14), so it's down to
+        // the shared scale's md tier. This is a GLOBAL gap, so page-local
+        // bottom padding must not stack on top of it — see image_page.dart,
+        // which had its own removed for exactly that reason. Bottom padding
+        // is sm, since the system inset alone already clears the home
+        // indicator.
         padding: EdgeInsets.fromLTRB(
           16,
-          33,
+          Spacing.md,
           16,
-          8 + MediaQuery.of(context).viewPadding.bottom,
+          Spacing.sm + MediaQuery.of(context).viewPadding.bottom,
         ),
         child: Container(
           // antiAliasWithSaveLayer composites the rounded-corner children
