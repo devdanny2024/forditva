@@ -955,10 +955,11 @@ class _TextPageState extends State<TextPage> {
         // so the cards fill toward the menu with little wasted space.
         final double vPad = 3.0;
         final halfHeight = (constraints.maxHeight - 2 * vPad) / 2;
-        // Was 70 — now that the cards are wider, the switcher read as too
-        // small for the card (Markus, 2026-07-14: "please 59% bigger, also
-        // the text beside"). 70 * 1.59 = 111.3.
-        final switchSize = 111.0;
+        // Flag icons and label text got the 59% bump (2026-07-14), but the
+        // swap button itself reverted back to its original size on request
+        // (Markus, 2026-07-14: "revert switch icon to its original size,
+        // just switch icon").
+        final switchSize = 70.0;
         final switchHalf = switchSize / 2;
         // The two cards are mirror images about the centre line: equal heights,
         // equal margins. They meet along a stepped seam through the switch
