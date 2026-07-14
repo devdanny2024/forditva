@@ -3,6 +3,7 @@ import 'package:forditva/db/database.dart'; // adjust path if needed
 import 'package:google_fonts/google_fonts.dart';
 
 import 'flutter_gen/gen_l10n/app_localizations.dart';
+import 'spacing.dart';
 import 'widgets/tutor_dialog.dart';
 
 const Color navGreen = Color(0xFF436F4D);
@@ -115,9 +116,9 @@ class _FavoritePageState extends State<FavoritePage> {
                 }
 
                 return ListView.builder(
-                  // Extra bottom clearance so the last card never sits behind
-                  // the floating nav bar (Markus, 2026-07-12).
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  // Bottom was 100, stacking on the nav-bar white area into
+                  // ~133px of dead space (spacing audit, 2026-07-13).
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, Spacing.sm),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
                     final entry = filtered[i];

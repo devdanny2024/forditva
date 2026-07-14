@@ -762,10 +762,11 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     final double iconSize = (screenWidth * 0.085).clamp(24.0, 48.0);
     return Container(
       color: Colors.white,
-      // No bottom padding of its own — the nav bar's global top padding
-      // (main.dart) now provides that gap for every page. Having both here
-      // AND there stacked into a visibly oversized gap (Markus, 2026-07-12).
-      padding: const EdgeInsets.only(top: 30, left: 16, right: 16),
+      // No top or bottom padding of its own: the global body/nav-bar gaps
+      // (main.dart) already provide both. A local top: 30 here stacked onto
+      // the global 30 and made this the most top-heavy page in the app
+      // (spacing audit, 2026-07-13). Left/right stay on the 16 grid.
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
           // ─── Top & Bottom panels separated by draggable divider ───
