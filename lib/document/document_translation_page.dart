@@ -670,13 +670,14 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
       // be no scrolling like the document page, it must fit").
       child: LayoutBuilder(
         builder: (context, outerConstraints) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Align(
+          // Was Padding(top: 10) here, an extra offset only this page had —
+          // Conversation and Image have no equivalent, so Document's top
+          // edge sat visibly lower than the other two (Markus, 2026-07-14).
+          return Align(
               alignment: Alignment.topCenter,
               child: Container(
                 width: cardWidth,
-                height: outerConstraints.maxHeight - 10,
+                height: outerConstraints.maxHeight,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -745,8 +746,7 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                   },
                 ),
               ),
-            ),
-          );
+            );
         },
       ),
     );
