@@ -90,5 +90,8 @@
   "keyVocabulary": "Wichtiger Wortschatz",
   "translationHeading": "Übersetzung",
   "pickFromGallery": "Galerie",
-  "pickFromFiles": "Dateien (auch PDF)"
+  "pickFromFiles": "Dateien (auch PDF)",
+  "pdfPagesTitle": "Welche Seiten sollen übersetzt werden?",
+  "pdfPagesHint": "z. B. 3 oder 2-5",
+  "pdfPagesAll": "Alle Seiten"
 }

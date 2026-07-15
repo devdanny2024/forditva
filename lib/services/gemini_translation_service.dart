@@ -155,8 +155,17 @@ Output format (strict JSON, no extra text, no markdown formatting inside the JSO
       apiKey: dotenv.env['GEMINI_API_KEY']!,
       generationConfig: GenerationConfig(temperature: 0.0),
     );
+    // Constrained answer set + an explicit "unsure" escape hatch. The old
+    // open-ended prompt forced a guess, and on noisy OCR samples (numbers,
+    // codes, mixed fragments) that guess skewed toward EN, producing false
+    // "detected EN" warnings on documents with no English in them at all
+    // (Markus, 2026-07-15, a fully Hungarian utility bill).
     final prompt = '''
-Detect the language of the following text and reply with exactly the ISO 639-1 code (two uppercase letters), no other words. Base your answer on the text as a whole, not just the first few words.
+The following text was extracted from a photographed document by OCR. It may contain numbers, dates, reference codes and OCR noise; ignore those and judge only the natural-language words.
+
+Which language are the natural-language words written in? Reply with exactly one of: HU, DE, EN, NL, FR, ES, RU, IT, UNKNOWN
+
+Reply UNKNOWN if there are too few natural-language words to be sure, or if none of the listed languages fits. No other words in your reply.
 
 $inputText
 ''';

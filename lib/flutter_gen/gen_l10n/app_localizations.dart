@@ -615,6 +615,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Files (also PDF)'**
   String get pickFromFiles;
+
+  /// No description provided for @pdfPagesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which pages should be translated?'**
+  String get pdfPagesTitle;
+
+  /// No description provided for @pdfPagesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 3 or 2-5'**
+  String get pdfPagesHint;
+
+  /// No description provided for @pdfPagesAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All pages'**
+  String get pdfPagesAll;
 }
 
 class _AppLocalizationsDelegate

@@ -107,6 +107,10 @@ If nothing can be read, reply only with:
     required bool interpret,
     required String fromLangCode,
     required String toLangCode,
+    // Optional page selection for PDFs, e.g. "3" or "2-5". Null = all pages
+    // (Markus, 2026-07-15: let the user pick which page of a PDF to
+    // translate instead of always doing the whole document).
+    String? pdfPages,
   }) async {
     if (!translate && !interpret) {
       throw Exception('Must select at least one: translate or interpret.');
@@ -116,10 +120,15 @@ If nothing can be read, reply only with:
     final base64Image = base64Encode(bytes);
     final mimeType = lookupMimeType(imageFile.path) ?? 'image/jpeg';
 
-    final prompt =
+    var prompt =
         interpret
             ? _buildInterpretationPrompt(fromLangCode, toLangCode)
             : _buildTranslationPrompt(fromLangCode, toLangCode);
+    if (pdfPages != null && pdfPages.trim().isNotEmpty) {
+      prompt =
+          '$prompt\nIMPORTANT: Process ONLY page(s) ${pdfPages.trim()} of the '
+          'attached document. Ignore every other page completely.';
+    }
 
     final response = await http.post(
       Uri.parse(_endpoint),
@@ -135,7 +144,14 @@ If nothing can be read, reply only with:
             ],
           },
         ],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
+        // Was 2048, which a multi-page PDF blows straight through: the
+        // model (2.5 flash) spends output budget on internal thinking
+        // first, sees almost nothing left for the answer, and bails out
+        // with "[]" — which the app then reported as "image not clear"
+        // (Markus, 2026-07-15, 9-page PDF; reproduced 1:1 with his file:
+        // 1201 thought tokens then a bare [] at 2048, full extraction at
+        // a higher cap).
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 32768},
       }),
     );
 
@@ -153,10 +169,24 @@ If nothing can be read, reply only with:
     );
 
     final candidates = data['candidates'] as List?;
-    if (candidates == null || candidates.isEmpty) return '';
+    if (candidates == null || candidates.isEmpty) {
+      // Don't return '' here: the caller treats an empty string as "image
+      // not clear", which points the user at their photo when the real
+      // problem was the request (safety block, truncation, ...).
+      throw Exception(
+        'Gemini returned no candidates '
+        '(finishReason unknown, promptFeedback: ${data['promptFeedback']})',
+      );
+    }
+    final finishReason = candidates[0]['finishReason'] as String? ?? '';
     final parts = candidates[0]['content']?['parts'] as List?;
-    if (parts == null || parts.isEmpty) return '';
-    final text = parts[0]['text'] as String? ?? '';
+    final text =
+        (parts == null || parts.isEmpty)
+            ? ''
+            : (parts[0]['text'] as String? ?? '');
+    if (text.trim().isEmpty && finishReason != 'STOP') {
+      throw Exception('Gemini returned no text (finishReason: $finishReason)');
+    }
     return text.trim();
   }
 }

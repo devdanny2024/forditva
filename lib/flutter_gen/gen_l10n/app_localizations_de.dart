@@ -285,4 +285,13 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get pickFromFiles => 'Dateien (auch PDF)';
+
+  @override
+  String get pdfPagesTitle => 'Welche Seiten sollen übersetzt werden?';
+
+  @override
+  String get pdfPagesHint => 'z. B. 3 oder 2-5';
+
+  @override
+  String get pdfPagesAll => 'Alle Seiten';
 }

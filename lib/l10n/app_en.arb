@@ -96,5 +96,8 @@
   "keyVocabulary": "Key Vocabulary",
   "translationHeading": "Translation",
   "pickFromGallery": "Gallery",
-  "pickFromFiles": "Files (also PDF)"
+  "pickFromFiles": "Files (also PDF)",
+  "pdfPagesTitle": "Which pages should be translated?",
+  "pdfPagesHint": "e.g. 3 or 2-5",
+  "pdfPagesAll": "All pages"
 }

@@ -1012,7 +1012,14 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
 
                             if (!context.mounted) return;
 
-                            if (detected != expected) {
+                            // Only a confident, supported answer may prompt a
+                            // language switch: UNKNOWN or garbage would fall
+                            // back to _leftLang in _langFromCode and offer a
+                            // nonsense change.
+                            final isSupported = Language.values.any(
+                              (l) => l.code.toUpperCase() == detected,
+                            );
+                            if (isSupported && detected != expected) {
                               final detectedLang = _langFromCode(detected);
                               final currentLocale =
                                   Localizations.localeOf(context).languageCode;

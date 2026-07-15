@@ -74,6 +74,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   bool get _isPdf =>
       _imageFile != null && _imageFile!.path.toLowerCase().endsWith('.pdf');
 
+  /// Which pages of the current PDF to process, e.g. "3" or "2-5". Null =
+  /// all pages. Asked once when the PDF is picked (Markus, 2026-07-15:
+  /// "maybe you can ask which page of a PDF should be opened") and kept so
+  /// re-runs (language switch, retranslate) honor the same choice.
+  String? _pdfPageSpec;
+
   // AI service & state
   final GeminiImageService _chat = GeminiImageService();
   final _ttsService = GeminiTtsService();
@@ -590,6 +596,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         interpret: _interpretMode,
         fromLangCode: _langCode(_rightLang),
         toLangCode: _langCode(_leftLang),
+        pdfPages: _isPdf ? _pdfPageSpec : null,
       );
 
       // The language-mismatch check only makes sense in translate mode, where
@@ -600,39 +607,50 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       // "explain image" reporting "your language is German" right after a
       // correct Hungarian translation).
       if (!_interpretMode) {
-        String sampleText;
+        // Build the detection sample STRICTLY from the extracted "o"
+        // (original) segments — never from Gemini's raw reply. The raw reply
+        // is a JSON blob (often wrapped in a ```json fence despite the
+        // prompt), and asking "what language is this?" about JSON syntax
+        // reliably comes back "EN". That was the real cause of a 100%
+        // Hungarian utility bill being reported as English (Markus,
+        // 2026-07-15): the fence made json.decode throw, the old code fell
+        // back to sampleText = raw out, and the detector saw code, not
+        // Hungarian.
+        String fenceStripped = out.trim();
+        final fenceMatch = RegExp(
+          r'^```[a-zA-Z]*\s*([\s\S]*?)\s*```$',
+        ).firstMatch(fenceStripped);
+        if (fenceMatch != null) fenceStripped = fenceMatch.group(1)!.trim();
+
+        String sampleText = '';
         try {
-          final maybeJson = json.decode(out);
+          final maybeJson = json.decode(fenceStripped);
           if (maybeJson is List && maybeJson.isNotEmpty) {
             // Use every segment's original text, not just the first, so
             // short/ambiguous fragments don't dominate detection (Markus,
-            // 2026-07-10: genuine Hungarian misdetected as Portuguese/German).
+            // 2026-07-10: genuine Hungarian misdetected as Portuguese).
             sampleText = maybeJson
                 .map((e) => (e is Map && e['o'] != null) ? e['o'].toString() : '')
-                .where((s) => s.isNotEmpty)
+                .where((s) => s.isNotEmpty && !s.contains('{unsafe}'))
                 .join(' ');
-            if (sampleText.isEmpty) sampleText = out;
-          } else {
-            sampleText = out;
           }
         } catch (_) {
-          sampleText = out;
+          // Decode still failed: salvage the "o" values by regex rather
+          // than handing raw JSON to the detector.
+          sampleText = RegExp(r'"o"\s*:\s*"((?:[^"\\]|\\.)*)"')
+              .allMatches(fenceStripped)
+              .map((m) => m.group(1)!)
+              .where((s) => !s.contains('{unsafe}'))
+              .join(' ');
         }
 
-        // Short samples (brand names, page titles, a handful of words) are
-        // the recurring cause of false-positive mismatches — genuine
-        // Hungarian read as Portuguese/German, now genuine German read as
-        // English (Markus, 2026-07-12: a clearly-German site screenshot).
-        // Skip the check rather than interrupt the user over an unreliable
-        // read on too little text.
-        if (sampleText.trim().length >= 20) {
-        final rawDetected = await _gemini.detectLanguage(sampleText);
-
-        // Normalize Gemini result. Guard the substring so a short/empty result
-        // can't throw a RangeError (which was surfacing as a false error).
-        final normalized = rawDetected.toUpperCase().replaceAll('-', '');
-        final detected =
-            normalized.length >= 2 ? normalized.substring(0, 2) : normalized;
+        // Documents like bills are full of dates, amounts and IDs; digits
+        // and punctuation say nothing about the language, so the "enough
+        // text to judge" guard counts letters only.
+        final letterCount =
+            RegExp(r'[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰäöüßÄÖÜàâçèêëîïôùûÀÂÇÈÊËÎÏÔÙÛñÑа-яА-Я]')
+                .allMatches(sampleText)
+                .length;
 
         final langCodes = {
           Language.hu: 'HU',
@@ -645,7 +663,22 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           Language.it: 'IT',
         };
 
-        if (detected != langCodes[_rightLang]) {
+        String detected = '';
+        if (letterCount >= 20) {
+          final rawDetected = await _gemini.detectLanguage(sampleText);
+          // Normalize the result. Guard the substring so a short/empty
+          // result can't throw a RangeError.
+          final normalized = rawDetected.toUpperCase().replaceAll('-', '');
+          detected =
+              normalized.length >= 2 ? normalized.substring(0, 2) : normalized;
+        }
+
+        // Only a confident, supported answer may interrupt the user: if the
+        // detector answered UNKNOWN, garbage, or something outside the app's
+        // 8 languages, silently accept the user's own selection.
+        if (detected.isNotEmpty &&
+            langCodes.containsValue(detected) &&
+            detected != langCodes[_rightLang]) {
           if (mounted) {
           await showDialog(
             context: context,
@@ -715,7 +748,6 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           _resultText = '';
         });
         return;
-        }
         }
       }
 
@@ -856,15 +888,59 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
     final file = File(path);
     if (path.toLowerCase().endsWith('.pdf')) {
-      // Nothing to crop on a PDF; hand it to Gemini as-is.
+      // Nothing to crop on a PDF. Ask which pages to process before
+      // spending tokens on the whole document (Markus, 2026-07-15).
+      final pages = await _askPdfPages();
+      if (pages == null) return; // dialog dismissed = cancel
       setState(() {
         _imageFile = file;
         _croppedImageFile = null;
+        _pdfPageSpec = pages.isEmpty ? null : pages;
       });
       await _processImage(imageFile: file);
       return;
     }
+    _pdfPageSpec = null;
     await _loadImageWithCropper(file);
+  }
+
+  /// Asks which pages of the picked PDF to process. Returns '' for all
+  /// pages, a spec like "3" or "2-5", or null if the user backed out.
+  Future<String?> _askPdfPages() async {
+    final loc = AppLocalizations.of(context)!;
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            title: Text(
+              loc.pdfPagesTitle,
+              style: GoogleFonts.robotoCondensed(fontWeight: FontWeight.w600),
+            ),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.text,
+              decoration: InputDecoration(hintText: loc.pdfPagesHint),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(''),
+                child: Text(loc.pdfPagesAll),
+              ),
+              TextButton(
+                onPressed:
+                    () => Navigator.of(ctx).pop(controller.text.trim()),
+                child: Text(loc.ok),
+              ),
+            ],
+          ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<void> _loadImageWithCropper(File file) async {
@@ -877,6 +953,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     setState(() {
       _imageFile = file;
       _croppedImageFile = cropped;
+      _pdfPageSpec = null; // images have no page selection
     });
 
     await _processImage(imageFile: cropped ?? file);
@@ -1106,6 +1183,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                         setState(() {
                                           _imageFile = null;
                                           _croppedImageFile = null;
+                                          _pdfPageSpec = null;
                                           _resultText = '';
                                           _isProcessing = false;
                                           _laActive = false;

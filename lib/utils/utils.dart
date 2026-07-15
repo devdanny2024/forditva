@@ -10,6 +10,10 @@ Future<bool> isTextInLanguage(
   GeminiTranslator gemini,
 ) async {
   final detected = await gemini.detectLanguage(text);
+  // The detector may now answer UNKNOWN when it can't judge (short input,
+  // OCR noise). That's not evidence the user picked the wrong language, so
+  // give them the benefit of the doubt instead of blocking the translation.
+  if (detected.isEmpty || detected.startsWith('UN')) return true;
   return detected == langCode.toUpperCase();
 }
 

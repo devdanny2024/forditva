@@ -284,4 +284,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pickFromFiles => 'Files (also PDF)';
+
+  @override
+  String get pdfPagesTitle => 'Which pages should be translated?';
+
+  @override
+  String get pdfPagesHint => 'e.g. 3 or 2-5';
+
+  @override
+  String get pdfPagesAll => 'All pages';
 }

@@ -90,5 +90,8 @@
   "keyVocabulary": "Fontos szókincs",
   "translationHeading": "Fordítás",
   "pickFromGallery": "Galéria",
-  "pickFromFiles": "Fájlok (PDF is)"
+  "pickFromFiles": "Fájlok (PDF is)",
+  "pdfPagesTitle": "Mely oldalakat fordítsuk le?",
+  "pdfPagesHint": "pl. 3 vagy 2-5",
+  "pdfPagesAll": "Összes oldal"
 }

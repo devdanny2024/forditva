@@ -283,4 +283,13 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get pickFromFiles => 'Fájlok (PDF is)';
+
+  @override
+  String get pdfPagesTitle => 'Mely oldalakat fordítsuk le?';
+
+  @override
+  String get pdfPagesHint => 'pl. 3 vagy 2-5';
+
+  @override
+  String get pdfPagesAll => 'Összes oldal';
 }
