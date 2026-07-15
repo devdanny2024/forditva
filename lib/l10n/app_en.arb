@@ -94,5 +94,7 @@
   "openPrivacyPolicy": "Open Privacy Policy",
   "grammarExplanation": "Grammar Explanation",
   "keyVocabulary": "Key Vocabulary",
-  "translationHeading": "Translation"
+  "translationHeading": "Translation",
+  "pickFromGallery": "Gallery",
+  "pickFromFiles": "Files (also PDF)"
 }

@@ -88,5 +88,7 @@
   "openPrivacyPolicy": "Adatvédelmi nyilatkozat megnyitása",
   "grammarExplanation": "Nyelvtani magyarázat",
   "keyVocabulary": "Fontos szókincs",
-  "translationHeading": "Fordítás"
+  "translationHeading": "Fordítás",
+  "pickFromGallery": "Galéria",
+  "pickFromFiles": "Fájlok (PDF is)"
 }

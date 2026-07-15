@@ -278,4 +278,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get translationHeading => 'Translation';
+
+  @override
+  String get pickFromGallery => 'Gallery';
+
+  @override
+  String get pickFromFiles => 'Files (also PDF)';
 }

@@ -779,11 +779,74 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     }
   }
 
-  /// Loads from the device: images (which still go through the cropper) and
-  /// PDFs (which skip it and go straight to Gemini). Replaces the old
-  /// gallery-only picker so documents already saved as PDFs can be read
-  /// without photographing them (Markus, 2026-07-14).
+  /// "Load from device" entry point: asks whether to pick a photo from the
+  /// gallery or a document from files. These are separate pickers on both
+  /// platforms (Photos vs Files on iOS, gallery vs document picker on
+  /// Android), so replacing the gallery with the file picker outright would
+  /// have taken the photo library away (Markus, 2026-07-15: "Load From
+  /// should give you the option to pick from gallery or files").
+  Future<void> _showLoadSourceSheet() async {
+    final loc = AppLocalizations.of(context)!;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library, color: navRed),
+                  title: Text(
+                    loc.pickFromGallery,
+                    style: GoogleFonts.robotoCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(ctx).pop('gallery'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.folder_open, color: navRed),
+                  title: Text(
+                    loc.pickFromFiles,
+                    style: GoogleFonts.robotoCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () => Navigator.of(ctx).pop('files'),
+                ),
+              ],
+            ),
+          ),
+    );
+    if (source == 'gallery') {
+      await _pickFromGallery();
+    } else if (source == 'files') {
+      await _pickFromFiles();
+    }
+  }
+
+  /// Photo library (image_picker). Always an image, so it goes through the
+  /// cropper.
   Future<void> _pickFromGallery() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: _pickMaxWidth,
+      imageQuality: _pickQuality,
+    );
+    if (picked == null) return;
+    await _loadImageWithCropper(File(picked.path));
+  }
+
+  /// Device files: images (which still go through the cropper) and PDFs
+  /// (which skip it and go straight to Gemini, which accepts
+  /// application/pdf as inline_data). Markus, 2026-07-14.
+  Future<void> _pickFromFiles() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'],
@@ -792,9 +855,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     if (path == null) return;
 
     final file = File(path);
-    final isPdf = path.toLowerCase().endsWith('.pdf');
-
-    if (isPdf) {
+    if (path.toLowerCase().endsWith('.pdf')) {
       // Nothing to crop on a PDF; hand it to Gemini as-is.
       setState(() {
         _imageFile = file;
@@ -803,7 +864,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       await _processImage(imageFile: file);
       return;
     }
+    await _loadImageWithCropper(file);
+  }
 
+  Future<void> _loadImageWithCropper(File file) async {
     if (!mounted) return;
     final cropped = await Navigator.push<File?>(
       context,
@@ -970,9 +1034,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                 ),
                                                 const SizedBox(width: 28),
                                                 GestureDetector(
-                                                  onTap: _pickFromGallery,
+                                                  onTap: _showLoadSourceSheet,
                                                   child: const Icon(
-                                                    Icons.picture_as_pdf,
+                                                    Icons.folder_open,
                                                     size: 72,
                                                     color: navRed,
                                                   ),
@@ -1009,7 +1073,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                       recognizer:
                                                           TapGestureRecognizer()
                                                             ..onTap =
-                                                                _pickFromGallery,
+                                                                _showLoadSourceSheet,
                                                     ),
                                                     TextSpan(
                                                       text: AppLocalizations.of(context)!.imagePickerLine2,
@@ -1072,7 +1136,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     // find where I can upload a PDF").
                                     const SizedBox(width: 12),
                                     GestureDetector(
-                                      onTap: _pickFromGallery,
+                                      onTap: _showLoadSourceSheet,
                                       child: Image.asset(
                                         'assets/png24/black/b_document.png',
                                         width: iconSize,

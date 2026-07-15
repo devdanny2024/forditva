@@ -88,5 +88,7 @@
   "openPrivacyPolicy": "Datenschutzerklärung öffnen",
   "grammarExplanation": "Grammatikerklärung",
   "keyVocabulary": "Wichtiger Wortschatz",
-  "translationHeading": "Übersetzung"
+  "translationHeading": "Übersetzung",
+  "pickFromGallery": "Galerie",
+  "pickFromFiles": "Dateien (auch PDF)"
 }

@@ -603,6 +603,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Translation'**
   String get translationHeading;
+
+  /// No description provided for @pickFromGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Gallery'**
+  String get pickFromGallery;
+
+  /// No description provided for @pickFromFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Files (also PDF)'**
+  String get pickFromFiles;
 }
 
 class _AppLocalizationsDelegate

@@ -277,4 +277,10 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get translationHeading => 'Fordítás';
+
+  @override
+  String get pickFromGallery => 'Galéria';
+
+  @override
+  String get pickFromFiles => 'Fájlok (PDF is)';
 }
