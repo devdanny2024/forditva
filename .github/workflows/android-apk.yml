@@ -77,6 +77,17 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      # android/gradle.properties caps the JVM at 1536m because the Windows dev
+      # machine builds under memory pressure. Jetifier rewriting the Flutter
+      # engine jars runs out of heap at that size here, so give the runner room.
+      - name: Raise Gradle heap for the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^org\.gradle\.jvmargs=.*/org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g/' \
+            android/gradle.properties
+          grep '^org.gradle.jvmargs=' android/gradle.properties
+
       - name: Build APK
         run: flutter build apk --release
 
