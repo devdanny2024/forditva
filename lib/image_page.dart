@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart' as ap;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -64,6 +65,14 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
   File? _croppedImageFile; // The cropped image (if any)
+
+  /// True when the picked file is a PDF rather than an image (Markus,
+  /// 2026-07-14: the Image page should accept files/PDFs too). PDFs skip the
+  /// cropper (nothing to draw a polygon on) and can't render via Image.file,
+  /// so the preview shows a document placeholder instead. Gemini accepts the
+  /// PDF straight through as inline_data, same as an image.
+  bool get _isPdf =>
+      _imageFile != null && _imageFile!.path.toLowerCase().endsWith('.pdf');
 
   // AI service & state
   final GeminiImageService _chat = GeminiImageService();
@@ -180,6 +189,15 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   double _splitRatio = 0.5;
   static const double _dividerH = 10.0;
   double _zoomLevel = 1.0; // Default zoom factor (1x)
+
+  // Capture resolution for the picker. Was maxWidth 512 / quality 70, which
+  // is far too small to read a document photo: the text was destroyed before
+  // Gemini ever saw it, so it kept reporting the image wasn't clear enough
+  // (Markus, 2026-07-14, after photographing a document). 2048px keeps
+  // document text legible; the extra Gemini image tokens cost a fraction of
+  // a WIU per call, so it's cheap next to a failed read.
+  static const double _pickMaxWidth = 2048;
+  static const int _pickQuality = 90;
 
   final GeminiTranslator _gemini =
       GeminiTranslator(); // Already used in your other pages
@@ -708,8 +726,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   Future<void> _takePhoto() async {
     final XFile? picked = await _picker.pickImage(
       source: ImageSource.camera,
-      maxWidth: 512,
-      imageQuality: 70,
+      maxWidth: _pickMaxWidth,
+      imageQuality: _pickQuality,
     );
     if (picked != null) {
       File file = File(picked.path);
@@ -727,26 +745,43 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     }
   }
 
+  /// Loads from the device: images (which still go through the cropper) and
+  /// PDFs (which skip it and go straight to Gemini). Replaces the old
+  /// gallery-only picker so documents already saved as PDFs can be read
+  /// without photographing them (Markus, 2026-07-14).
   Future<void> _pickFromGallery() async {
-    final XFile? picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      imageQuality: 70,
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'],
     );
-    if (picked != null) {
-      File file = File(picked.path);
-      final cropped = await Navigator.push<File?>(
-        context,
-        MaterialPageRoute(builder: (_) => ImageCropperPage(imageFile: file)),
-      );
+    final path = result?.files.single.path;
+    if (path == null) return;
 
+    final file = File(path);
+    final isPdf = path.toLowerCase().endsWith('.pdf');
+
+    if (isPdf) {
+      // Nothing to crop on a PDF; hand it to Gemini as-is.
       setState(() {
         _imageFile = file;
-        _croppedImageFile = cropped;
+        _croppedImageFile = null;
       });
-
-      await _processImage(imageFile: cropped ?? file);
+      await _processImage(imageFile: file);
+      return;
     }
+
+    if (!mounted) return;
+    final cropped = await Navigator.push<File?>(
+      context,
+      MaterialPageRoute(builder: (_) => ImageCropperPage(imageFile: file)),
+    );
+
+    setState(() {
+      _imageFile = file;
+      _croppedImageFile = cropped;
+    });
+
+    await _processImage(imageFile: cropped ?? file);
   }
 
   bool _laActive = false;
@@ -809,7 +844,47 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child:
-                                    (_croppedImageFile ?? _imageFile) != null
+                                    _isPdf
+                                        // A PDF has no bitmap to show, so
+                                        // display the filename instead of
+                                        // failing an Image.file decode.
+                                        ? Center(
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              const Icon(
+                                                Icons.picture_as_pdf,
+                                                size: 72,
+                                                color: navRed,
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                    ),
+                                                child: Text(
+                                                  _imageFile!.path
+                                                      .split(RegExp(r'[/\\]'))
+                                                      .last,
+                                                  textAlign: TextAlign.center,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style:
+                                                      GoogleFonts.robotoCondensed(
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                        : (_croppedImageFile ?? _imageFile) !=
+                                            null
                                         ? ClipRRect(
                                           borderRadius: BorderRadius.circular(
                                             8,

@@ -51,10 +51,11 @@ class GeminiImageService {
     return '''
 You are an AI assistant for image translation & document interpretation.
 
-Attached is an image containing $fromLangName text. The target language is $toLangName.
+Attached is an image or PDF document containing $fromLangName text. The target language is $toLangName.
 
 Your task:
 - Extract only fully visible $fromLangName text segments. Skip any partially visible, cut-off, or incomplete text.
+- If the document has multiple pages, process all of them in order.
 - If a segment is not clearly legible, set both "o" and "t" fields to "{unsafe}".
 - Translate each clearly legible segment individually into $toLangName.
 - Convert any dates into $targetDateFormat.
@@ -79,10 +80,11 @@ If you are unable to detect any text, return: []
     return '''
 You are an AI assistant for image translation & document interpretation.
 
-Attached is an image containing $fromLangName text.
+Attached is an image or PDF document containing $fromLangName text.
 
 Instructions:
 - Carefully extract and analyze the document content.
+- If the document has multiple pages, consider all of them.
 - Only use information that is fully visible and clearly readable.
 - If anything is illegible or incomplete, say "illegible" or "not clearly identifiable".
 
