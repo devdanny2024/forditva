@@ -6,6 +6,25 @@ plugins {
 }
 
 android {
+    // The release build signs with the debug key (see buildTypes below), so the
+    // debug keystore decides whether testers can install over their existing
+    // app. Gradle normally picks it up from the machine's own ~/.android, which
+    // on a CI runner means a freshly generated key and a signature testers'
+    // devices reject. Pointing at an explicit keystore keeps CI builds signed
+    // with the same key as local ones. Unset locally, so nothing changes there.
+    val debugKeystoreOverride: String? = System.getenv("FORDITVA_DEBUG_KEYSTORE")
+
+    signingConfigs {
+        getByName("debug") {
+            if (debugKeystoreOverride != null) {
+                storeFile = file(debugKeystoreOverride)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     namespace = "com.example.forditva"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"

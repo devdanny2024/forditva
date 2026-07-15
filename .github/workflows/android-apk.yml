@@ -45,23 +45,25 @@ jobs:
           cache-key: flutter-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
 
       # The release build type signs with the debug key (android/app/build.gradle.kts).
-      # A runner-generated debug key would change the APK signature, and Android
-      # refuses to install an update whose signature differs from the installed
-      # app. Restoring the project's own debug keystore keeps testers able to
-      # install over the top instead of uninstalling first.
+      # A runner-generated debug key changes the APK signature, which makes
+      # Android refuse the install and makes Play Protect flag the app as coming
+      # from an unknown developer. build.gradle.kts reads FORDITVA_DEBUG_KEYSTORE
+      # so the key is chosen explicitly rather than by whatever Gradle finds.
       - name: Restore debug keystore
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "${ANDROID_DEBUG_KEYSTORE:-}" ]; then
-            echo "::warning::ANDROID_DEBUG_KEYSTORE secret is not set. The runner will"
-            echo "::warning::generate a fresh debug key, so this APK's signature will differ"
-            echo "::warning::from earlier builds and testers must uninstall before installing."
-            exit 0
+            echo "ERROR: ANDROID_DEBUG_KEYSTORE secret is not set. Set it with:"
+            echo "  base64 -w0 ~/.android/debug.keystore | gh secret set ANDROID_DEBUG_KEYSTORE"
+            exit 1
           fi
-          mkdir -p ~/.android
-          printf '%s' "$ANDROID_DEBUG_KEYSTORE" | base64 -d > ~/.android/debug.keystore
-          echo "debug.keystore restored ($(wc -c < ~/.android/debug.keystore) bytes)"
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$ANDROID_DEBUG_KEYSTORE" | base64 -d \
+            > "$RUNNER_TEMP/signing/debug.keystore"
+          echo "FORDITVA_DEBUG_KEYSTORE=$RUNNER_TEMP/signing/debug.keystore" >> "$GITHUB_ENV"
+          keytool -list -v -keystore "$RUNNER_TEMP/signing/debug.keystore" \
+            -storepass android -alias androiddebugkey | grep 'SHA256:'
 
       - name: Write .env (bundled Flutter asset with API keys)
         shell: bash
@@ -90,6 +92,33 @@ jobs:
 
       - name: Build APK
         run: flutter build apk --release
+
+      # A silently wrong signature is worse than a failed build: the APK installs
+      # nowhere and Play Protect blocks it, which is what happened when the
+      # runner quietly used its own generated key (Markus, 2026-07-15).
+      - name: Verify APK signature matches the expected key
+        shell: bash
+        env:
+          EXPECTED_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner | sort | tail -n 1)
+          ACTUAL=$("$APKSIGNER" verify --print-certs \
+            build/app/outputs/flutter-apk/app-release.apk \
+            | grep -i 'SHA-256 digest' | head -n 1 | awk '{print $NF}')
+          echo "APK signer SHA-256: $ACTUAL"
+          if [ -z "${EXPECTED_SHA256:-}" ]; then
+            echo "::warning::ANDROID_SIGNING_SHA256 variable not set; skipping comparison."
+            exit 0
+          fi
+          if [ "$ACTUAL" != "$EXPECTED_SHA256" ]; then
+            echo "ERROR: APK is signed with the wrong key."
+            echo "  expected: $EXPECTED_SHA256"
+            echo "  actual:   $ACTUAL"
+            echo "Testers could not install this build over their existing app."
+            exit 1
+          fi
+          echo "Signature matches the expected key."
 
       - name: Rename APK with version
         shell: bash
