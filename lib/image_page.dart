@@ -206,13 +206,47 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   Language _leftLang = Language.de;
   Language _rightLang = Language.hu;
 
+  /// True only when essentially NOTHING could be read.
+  ///
+  /// This used to return true if the result contained "{unsafe}" or
+  /// "illegible" anywhere. But the translate prompt marks each individually
+  /// unreadable segment as "{unsafe}", and the interpret prompt is told to
+  /// say "illegible" for any unclear part. So a document where 29 of 30
+  /// segments read perfectly was thrown away wholesale because of the one
+  /// blurry line, and the more text the photo had, the more likely that
+  /// became (Markus, 2026-07-15: "I was taking a photo with more text and
+  /// it's telling me the quality is not good enough"). Now it only rejects
+  /// when every segment failed.
   bool _imageIsUnclear(String result) {
-    final clean = result.trim().toLowerCase();
+    final clean = result.trim();
     if (clean.isEmpty) return true;
-    // JSON result: look for {unsafe} or illegible
-    if (clean.contains('{unsafe}') || clean.contains('illegible')) return true;
-    // For HTML, you can check for specific phrases if needed
-    return false;
+
+    // Interpret mode returns HTML; only the explicit sentinel means failure.
+    if (_interpretMode) {
+      return clean.toLowerCase().contains("can't understand the image") ||
+          clean.toLowerCase().contains('cant understand the image');
+    }
+
+    // Translate mode returns a JSON array of {"o":..,"t":..} segments.
+    try {
+      final decoded = json.decode(stripHtmlCodeFence(clean));
+      if (decoded is List) {
+        if (decoded.isEmpty) return true;
+        final unreadable =
+            decoded.where((e) {
+              if (e is! Map) return true;
+              final o = (e['o'] ?? '').toString().toLowerCase();
+              return o.contains('{unsafe}') || o.trim().isEmpty;
+            }).length;
+        // Only a total failure counts as "not clear".
+        return unreadable == decoded.length;
+      }
+    } catch (_) {
+      // Not parseable as JSON: fall through to the conservative check below.
+    }
+
+    return clean.toLowerCase().contains('{unsafe}') &&
+        !clean.contains('"t"'); // nothing translated at all
   }
 
   Future<void> _saveState(File imageFile, String resultText) async {
@@ -918,13 +952,32 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           children: [
-                                            GestureDetector(
-                                              onTap: _takePhoto,
-                                              child: const Icon(
-                                                Icons.camera_alt,
-                                                size: 80,
-                                                color: navRed,
-                                              ),
+                                            // Camera and file/PDF side by
+                                            // side, so loading a PDF is a
+                                            // visible option and not only a
+                                            // text link (Markus, 2026-07-15).
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                GestureDetector(
+                                                  onTap: _takePhoto,
+                                                  child: const Icon(
+                                                    Icons.camera_alt,
+                                                    size: 80,
+                                                    color: navRed,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 28),
+                                                GestureDetector(
+                                                  onTap: _pickFromGallery,
+                                                  child: const Icon(
+                                                    Icons.picture_as_pdf,
+                                                    size: 72,
+                                                    color: navRed,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                             const SizedBox(height: 8),
                                             Padding(
@@ -1007,6 +1060,21 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       onTap: _takePhoto,
                                       child: Image.asset(
                                         'assets/png24/black/b_photo.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+                                    // Load a file/PDF. Without this the only
+                                    // way in was the "load up from" text link
+                                    // on the empty placeholder, so once a
+                                    // photo was loaded there was no way to
+                                    // reach it (Markus, 2026-07-15: "I can't
+                                    // find where I can upload a PDF").
+                                    const SizedBox(width: 12),
+                                    GestureDetector(
+                                      onTap: _pickFromGallery,
+                                      child: Image.asset(
+                                        'assets/png24/black/b_document.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),
