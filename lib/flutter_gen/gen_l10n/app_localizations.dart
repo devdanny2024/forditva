@@ -633,6 +633,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All pages'**
   String get pdfPagesAll;
+
+  /// No description provided for @noTextFoundTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching text found'**
+  String get noTextFoundTitle;
+
+  /// No description provided for @noTextFoundBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t find any {lang} text in this file. Please check that you selected the correct source language.'**
+  String noTextFoundBody(Object lang);
 }
 
 class _AppLocalizationsDelegate

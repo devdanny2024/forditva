@@ -293,4 +293,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pdfPagesAll => 'All pages';
+
+  @override
+  String get noTextFoundTitle => 'No matching text found';
+
+  @override
+  String noTextFoundBody(Object lang) {
+    return 'Couldn\'t find any $lang text in this file. Please check that you selected the correct source language.';
+  }
 }

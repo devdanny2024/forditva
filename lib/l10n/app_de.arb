@@ -93,5 +93,7 @@
   "pickFromFiles": "Dateien (auch PDF)",
   "pdfPagesTitle": "Welche Seiten sollen übersetzt werden?",
   "pdfPagesHint": "z. B. 3 oder 2-5",
-  "pdfPagesAll": "Alle Seiten"
+  "pdfPagesAll": "Alle Seiten",
+  "noTextFoundTitle": "Kein passender Text gefunden",
+  "noTextFoundBody": "In dieser Datei wurde kein {lang}-Text gefunden. Bitte überprüfe, ob du die richtige Ausgangssprache ausgewählt hast."
 }

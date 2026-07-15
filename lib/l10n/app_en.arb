@@ -99,5 +99,12 @@
   "pickFromFiles": "Files (also PDF)",
   "pdfPagesTitle": "Which pages should be translated?",
   "pdfPagesHint": "e.g. 3 or 2-5",
-  "pdfPagesAll": "All pages"
+  "pdfPagesAll": "All pages",
+  "noTextFoundTitle": "No matching text found",
+  "noTextFoundBody": "Couldn't find any {lang} text in this file. Please check that you selected the correct source language.",
+  "@noTextFoundBody": {
+    "placeholders": {
+      "lang": {}
+    }
+  }
 }

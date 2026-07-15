@@ -292,4 +292,12 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get pdfPagesAll => 'Összes oldal';
+
+  @override
+  String get noTextFoundTitle => 'Nem található megfelelő szöveg';
+
+  @override
+  String noTextFoundBody(Object lang) {
+    return 'Ebben a fájlban nem találtunk $lang nyelvű szöveget. Kérjük, ellenőrizd, hogy a megfelelő forrásnyelvet választottad-e ki.';
+  }
 }

@@ -93,5 +93,7 @@
   "pickFromFiles": "Fájlok (PDF is)",
   "pdfPagesTitle": "Mely oldalakat fordítsuk le?",
   "pdfPagesHint": "pl. 3 vagy 2-5",
-  "pdfPagesAll": "Összes oldal"
+  "pdfPagesAll": "Összes oldal",
+  "noTextFoundTitle": "Nem található megfelelő szöveg",
+  "noTextFoundBody": "Ebben a fájlban nem találtunk {lang} nyelvű szöveget. Kérjük, ellenőrizd, hogy a megfelelő forrásnyelvet választottad-e ki."
 }

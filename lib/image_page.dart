@@ -255,6 +255,25 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         !clean.contains('"t"'); // nothing translated at all
   }
 
+  /// True only when Gemini came back with a well-formed but empty JSON
+  /// array, i.e. the prompt's own "if you can't detect any text, return []"
+  /// instruction fired. That means it looked at the whole document and
+  /// found nothing in the selected source language, which is a language
+  /// mismatch, not a blurry photo (Markus, 2026-07-15: a PDF titled
+  /// "Hungarian-..." that turned out to be English text about Hungarian
+  /// art, so selecting Hungarian as source correctly found nothing). Kept
+  /// separate from [_imageIsUnclear], which also covers the case where
+  /// Gemini found segments but couldn't read them.
+  bool _noMatchingLanguageText(String result) {
+    if (_interpretMode) return false;
+    try {
+      final decoded = json.decode(stripHtmlCodeFence(result.trim()));
+      return decoded is List && decoded.isEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _saveState(File imageFile, String resultText) async {
     final prefs = await SharedPreferences.getInstance();
     prefs.setString('lastImagePath', imageFile.path);
@@ -758,7 +777,26 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         await _saveState(_croppedImageFile ?? _imageFile!, cleaned);
       }
 
-      if (_imageIsUnclear(out)) {
+      if (_noMatchingLanguageText(out)) {
+        showDialog(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: Text(AppLocalizations.of(context)!.noTextFoundTitle),
+                content: Text(
+                  AppLocalizations.of(
+                    context,
+                  )!.noTextFoundBody(_langCode(_rightLang)),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(AppLocalizations.of(context)!.ok),
+                  ),
+                ],
+              ),
+        );
+      } else if (_imageIsUnclear(out)) {
         showDialog(
           context: context,
           builder:
