@@ -16,6 +16,7 @@ import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:share_plus/share_plus.dart'; // your Gemini client
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
+import 'package:forditva/widgets/pdf_page_selector.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -926,14 +927,19 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
     final file = File(path);
     if (path.toLowerCase().endsWith('.pdf')) {
-      // Nothing to crop on a PDF. Ask which pages to process before
-      // spending tokens on the whole document (Markus, 2026-07-15).
-      final pages = await _askPdfPages();
-      if (pages == null) return; // dialog dismissed = cancel
+      // Nothing to crop on a PDF. Let the user tick the pages to process on a
+      // visual preview before spending tokens on the whole document (Markus,
+      // 2026-07-16: pick the pages instead of typing a page number).
+      if (!mounted) return;
+      final selected = await Navigator.push<List<int>?>(
+        context,
+        MaterialPageRoute(builder: (_) => PdfPageSelectorPage(file: file)),
+      );
+      if (selected == null || selected.isEmpty) return; // cancelled
       setState(() {
         _imageFile = file;
         _croppedImageFile = null;
-        _pdfPageSpec = pages.isEmpty ? null : pages;
+        _pdfPageSpec = _pagesToSpec(selected);
       });
       await _processImage(imageFile: file);
       return;
@@ -942,43 +948,22 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     await _loadImageWithCropper(file);
   }
 
-  /// Asks which pages of the picked PDF to process. Returns '' for all
-  /// pages, a spec like "3" or "2-5", or null if the user backed out.
-  Future<String?> _askPdfPages() async {
-    final loc = AppLocalizations.of(context)!;
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            title: Text(
-              loc.pdfPagesTitle,
-              style: GoogleFonts.robotoCondensed(fontWeight: FontWeight.w600),
-            ),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.text,
-              decoration: InputDecoration(hintText: loc.pdfPagesHint),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(''),
-                child: Text(loc.pdfPagesAll),
-              ),
-              TextButton(
-                onPressed:
-                    () => Navigator.of(ctx).pop(controller.text.trim()),
-                child: Text(loc.ok),
-              ),
-            ],
-          ),
-    );
-    controller.dispose();
-    return result;
+  /// Turns a sorted list of page numbers into a compact spec for the Gemini
+  /// prompt, collapsing runs into ranges: [1,2,3,5] -> "1-3,5".
+  String _pagesToSpec(List<int> pages) {
+    final parts = <String>[];
+    var start = pages.first;
+    var prev = pages.first;
+    for (final p in pages.skip(1)) {
+      if (p == prev + 1) {
+        prev = p;
+        continue;
+      }
+      parts.add(start == prev ? '$start' : '$start-$prev');
+      start = prev = p;
+    }
+    parts.add(start == prev ? '$start' : '$start-$prev');
+    return parts.join(',');
   }
 
   Future<void> _loadImageWithCropper(File file) async {

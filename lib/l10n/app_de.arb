@@ -95,5 +95,7 @@
   "pdfPagesHint": "z. B. 3 oder 2-5",
   "pdfPagesAll": "Alle Seiten",
   "noTextFoundTitle": "Kein passender Text gefunden",
-  "noTextFoundBody": "In dieser Datei wurde kein {lang}-Text gefunden. Bitte überprüfe, ob du die richtige Ausgangssprache ausgewählt hast."
+  "noTextFoundBody": "In dieser Datei wurde kein {lang}-Text gefunden. Bitte überprüfe, ob du die richtige Ausgangssprache ausgewählt hast.",
+  "pdfImporterInstruction": "Das Dokument enthält {count} einzelne Seiten. Welche davon sollen wir importieren? Wähle sie mit einem Klick in der Ecke aus.",
+  "pdfPageCounter": "Seite {current}/{total}"
 }

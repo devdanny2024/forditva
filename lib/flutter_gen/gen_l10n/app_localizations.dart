@@ -645,6 +645,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t find any {lang} text in this file. Please check that you selected the correct source language.'**
   String noTextFoundBody(Object lang);
+
+  /// No description provided for @pdfImporterInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'The document contains {count} single pages. Which from them should we import? Check them with a click in the corner.'**
+  String pdfImporterInstruction(Object count);
+
+  /// No description provided for @pdfPageCounter.
+  ///
+  /// In en, this message translates to:
+  /// **'Page {current}/{total}'**
+  String pdfPageCounter(Object current, Object total);
 }
 
 class _AppLocalizationsDelegate

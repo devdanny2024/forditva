@@ -106,5 +106,18 @@
     "placeholders": {
       "lang": {}
     }
+  },
+  "pdfImporterInstruction": "The document contains {count} single pages. Which from them should we import? Check them with a click in the corner.",
+  "@pdfImporterInstruction": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "pdfPageCounter": "Page {current}/{total}",
+  "@pdfPageCounter": {
+    "placeholders": {
+      "current": {},
+      "total": {}
+    }
   }
 }

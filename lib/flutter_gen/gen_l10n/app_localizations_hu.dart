@@ -300,4 +300,14 @@ class AppLocalizationsHu extends AppLocalizations {
   String noTextFoundBody(Object lang) {
     return 'Ebben a fájlban nem találtunk $lang nyelvű szöveget. Kérjük, ellenőrizd, hogy a megfelelő forrásnyelvet választottad-e ki.';
   }
+
+  @override
+  String pdfImporterInstruction(Object count) {
+    return 'A dokumentum $count oldalt tartalmaz. Melyeket importáljuk? Jelöld ki őket a sarokban lévő kattintással.';
+  }
+
+  @override
+  String pdfPageCounter(Object current, Object total) {
+    return 'Oldal $current/$total';
+  }
 }

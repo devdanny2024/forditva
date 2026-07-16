@@ -301,4 +301,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String noTextFoundBody(Object lang) {
     return 'Couldn\'t find any $lang text in this file. Please check that you selected the correct source language.';
   }
+
+  @override
+  String pdfImporterInstruction(Object count) {
+    return 'The document contains $count single pages. Which from them should we import? Check them with a click in the corner.';
+  }
+
+  @override
+  String pdfPageCounter(Object current, Object total) {
+    return 'Page $current/$total';
+  }
 }
