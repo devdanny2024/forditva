@@ -931,9 +931,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       // visual preview before spending tokens on the whole document (Markus,
       // 2026-07-16: pick the pages instead of typing a page number).
       if (!mounted) return;
-      final selected = await Navigator.push<List<int>?>(
-        context,
-        MaterialPageRoute(builder: (_) => PdfPageSelectorPage(file: file)),
+      final selected = await showDialog<List<int>?>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PdfPageSelectorDialog(file: file),
       );
       if (selected == null || selected.isEmpty) return; // cancelled
       setState(() {

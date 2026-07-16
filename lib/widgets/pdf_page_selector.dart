@@ -12,17 +12,18 @@ const Color _navGreen = Color(0xFF436F4D);
 
 /// Visual page picker for a PDF. Renders each page to a thumbnail and lets the
 /// user tick the pages to import, instead of typing page numbers (Markus,
-/// 2026-07-16). Returns the sorted 1-based page numbers, or null if cancelled.
-class PdfPageSelectorPage extends StatefulWidget {
-  const PdfPageSelectorPage({super.key, required this.file});
+/// 2026-07-16). Shown as a modal over the Image page, which stays dimmed
+/// behind it. Returns the sorted 1-based page numbers, or null if cancelled.
+class PdfPageSelectorDialog extends StatefulWidget {
+  const PdfPageSelectorDialog({super.key, required this.file});
 
   final File file;
 
   @override
-  State<PdfPageSelectorPage> createState() => _PdfPageSelectorPageState();
+  State<PdfPageSelectorDialog> createState() => _PdfPageSelectorDialogState();
 }
 
-class _PdfPageSelectorPageState extends State<PdfPageSelectorPage> {
+class _PdfPageSelectorDialogState extends State<PdfPageSelectorDialog> {
   PdfDocument? _doc;
   int _pageCount = 0;
   int _current = 1; // 1-based
@@ -107,12 +108,26 @@ class _PdfPageSelectorPageState extends State<PdfPageSelectorPage> {
   @override
   Widget build(BuildContext context) {
     final loc = AppLocalizations.of(context)!;
-    return Scaffold(
+    // Cap the height so the Image page stays visible, dimmed, above and below
+    // the card (Markus, 2026-07-16: it should read as a modal, not a new page).
+    final maxHeight = MediaQuery.of(context).size.height * 0.82;
+    return Dialog(
       backgroundColor: Colors.white,
-      body: SafeArea(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 36),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: _failed ? _errorBody(loc) : _selectorBody(loc),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child:
+              _failed
+                  ? _errorBody(loc)
+                  : _doc == null
+                  ? const SizedBox(
+                    height: 160,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                  : _selectorBody(loc),
         ),
       ),
     );
@@ -120,7 +135,7 @@ class _PdfPageSelectorPageState extends State<PdfPageSelectorPage> {
 
   Widget _errorBody(AppLocalizations loc) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           loc.imageNotClearBody,
