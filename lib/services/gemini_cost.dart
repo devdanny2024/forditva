@@ -9,8 +9,17 @@
 /// from the user, he needs to be getting $2.50 of real AI work for it").
 /// This makes the WIU deducted, converted back to dollars at $0.0025/WIU,
 /// equal the real Google cost.
+///
+/// A [feeMargin] of 30% is then added on top, so the fee stays covered even
+/// when the token-based estimate runs a little low (Markus, 2026-07-19:
+/// "a plus of 30%, so even if we are not getting the correct amount of cost,
+/// we are safe about fees").
+const double feeMargin = 1.30;
+
 double geminiWiuCost({required int promptTokens, required int outputTokens}) {
   const inputWiuPerToken = 0.00012; // (0.30 / 1e6) / 0.0025
   const outputWiuPerToken = 0.001; // (2.50 / 1e6) / 0.0025
-  return promptTokens * inputWiuPerToken + outputTokens * outputWiuPerToken;
+  final realCost =
+      promptTokens * inputWiuPerToken + outputTokens * outputWiuPerToken;
+  return realCost * feeMargin;
 }
