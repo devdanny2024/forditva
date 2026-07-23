@@ -97,12 +97,14 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-23, v1.0.1+57)
+## Current status (2026-07-23, v1.0.1+58)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-23-feemargin-playpackage.apk` (v1.0.1+57, package
-`hu.wirinungarn.forditva`, debug-key signed). Contains the fee margin + the new
-package name. iOS +57 build path is the same commit.
+`Downloads\forditva-2026-07-23-ask-question.apk` (v1.0.1+58, package
+`hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). Contains
+the "ask a question about this document" feature. iOS +58 build path is the
+same commit and also succeeded on CI.
 
 ## This session's work
 
