@@ -1,0 +1,107 @@
+name: Android AAB (Play)
+
+# Manual only: the Play bundle is built on demand for a store submission, not
+# on every push (the sideload APK still builds automatically via android-apk.yml).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-aab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      FLUTTER_VERSION: '3.41.1'
+      DOTENV: ${{ secrets.DOTENV }}
+      FORDITVA_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+      FORDITVA_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+      FORDITVA_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+          cache-key: flutter-${{ runner.os }}-${{ env.FLUTTER_VERSION }}-${{ hashFiles('pubspec.lock') }}
+
+      # Play rejects debug-signed uploads, so build.gradle.kts signs release with
+      # the upload key whenever FORDITVA_UPLOAD_KEYSTORE points at a keystore.
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_UPLOAD_KEYSTORE:-}" ]; then
+            echo "ERROR: ANDROID_UPLOAD_KEYSTORE secret is not set."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 -d \
+            > "$RUNNER_TEMP/signing/upload.jks"
+          echo "FORDITVA_UPLOAD_KEYSTORE=$RUNNER_TEMP/signing/upload.jks" >> "$GITHUB_ENV"
+
+      - name: Write .env (bundled Flutter asset with API keys)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DOTENV:-}" ]; then
+            echo "ERROR: DOTENV secret is empty."
+            exit 1
+          fi
+          printf '%s' "$DOTENV" > .env
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Raise Gradle heap for the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/^org\.gradle\.jvmargs=.*/org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g/' \
+            android/gradle.properties
+
+      - name: Build AAB
+        run: flutter build appbundle --release
+
+      - name: Verify the bundle is signed with the upload key
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          # An AAB is a jar; jarsigner -verify confirms it is signed (not debug).
+          jarsigner -verify "$AAB" | head -1
+          echo "AAB: $AAB"
+          ls -la "$AAB"
+
+      - name: Rename AAB with version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//' | tr '+' '-')
+          mkdir -p dist
+          cp build/app/outputs/bundle/release/app-release.aab \
+             "dist/forditva-${VERSION}.aab"
+          ls -la dist/
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: forditva-aab
+          path: dist/*.aab
+          if-no-files-found: error

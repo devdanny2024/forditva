@@ -14,6 +14,12 @@ android {
     // with the same key as local ones. Unset locally, so nothing changes there.
     val debugKeystoreOverride: String? = System.getenv("FORDITVA_DEBUG_KEYSTORE")
 
+    // Google Play rejects debug-signed uploads, so the Play build (the .aab)
+    // signs with a dedicated upload key instead. When these env vars are unset
+    // (every local build and the sideload-APK CI job) release keeps signing
+    // with the debug key, so nothing about tester APKs changes.
+    val uploadKeystore: String? = System.getenv("FORDITVA_UPLOAD_KEYSTORE")
+
     signingConfigs {
         getByName("debug") {
             if (debugKeystoreOverride != null) {
@@ -21,6 +27,14 @@ android {
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
+            }
+        }
+        create("upload") {
+            if (uploadKeystore != null) {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("FORDITVA_UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("FORDITVA_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("FORDITVA_UPLOAD_KEY_PASSWORD")
             }
         }
     }
@@ -38,8 +52,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.forditva"
+        // Public Play Store identity, permanent once published. Google rejects
+        // com.example.* (Markus/Kayode chose hu.wirinungarn.forditva, 2026-07-23).
+        // The internal `namespace` below stays as the original code package.
+        applicationId = "hu.wirinungarn.forditva"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24
@@ -50,9 +66,12 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use the upload key when it is provided (the Play .aab build),
+            // otherwise the debug key so sideload APKs and `flutter run
+            // --release` keep working unchanged.
+            signingConfig =
+                if (uploadKeystore != null) signingConfigs.getByName("upload")
+                else signingConfigs.getByName("debug")
         }
     }
 }
