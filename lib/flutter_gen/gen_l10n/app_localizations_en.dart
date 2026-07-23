@@ -311,4 +311,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String pdfPageCounter(Object current, Object total) {
     return 'Page $current/$total';
   }
+
+  @override
+  String get documentQuestionTitle => 'Ask about this document';
+
+  @override
+  String get documentQuestionHint => 'Type your question…';
+
+  @override
+  String get documentQuestionAsk => 'Ask';
+
+  @override
+  String get documentQuestionError =>
+      'Couldn\'t get an answer. Please try again.';
 }

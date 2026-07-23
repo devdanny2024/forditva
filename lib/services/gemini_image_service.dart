@@ -73,6 +73,22 @@ If you are unable to detect any text, return: []
 ''';
   }
 
+  String _buildQuestionPrompt(String question, String answerLangName) {
+    return '''
+You are an AI assistant helping a user understand a document (image or PDF).
+
+The user has a question about the attached document. Answer using only information found in the document.
+
+Question: $question
+
+Instructions:
+- Answer in $answerLangName.
+- Base your answer only on the document's content.
+- If the document doesn't contain enough information to answer, say so clearly.
+- Reply in plain text only: no markdown, no HTML, no code fences.
+''';
+  }
+
   String _buildInterpretationPrompt(String fromLang, String toLang) {
     final fromLangName = _langNames[fromLang] ?? fromLang;
     final toLangName = _langNames[toLang] ?? toLang;
@@ -116,10 +132,6 @@ If nothing can be read, reply only with:
       throw Exception('Must select at least one: translate or interpret.');
     }
 
-    final bytes = await imageFile.readAsBytes();
-    final base64Image = base64Encode(bytes);
-    final mimeType = lookupMimeType(imageFile.path) ?? 'image/jpeg';
-
     var prompt =
         interpret
             ? _buildInterpretationPrompt(fromLangCode, toLangCode)
@@ -130,6 +142,34 @@ If nothing can be read, reply only with:
           'attached document. Ignore every other page completely.';
     }
 
+    return _callGemini(prompt, imageFile);
+  }
+
+  /// Answers a free-text question about an already-loaded image/PDF (Markus,
+  /// 2026-07-23: a "?" button next to a translated document that opens a
+  /// modal where the user can type a question about it).
+  Future<String> askAboutDocument({
+    required File documentFile,
+    required String question,
+    required String answerLangCode,
+    // Same page-restriction convention as processImage's pdfPages.
+    String? pdfPages,
+  }) async {
+    final answerLangName = _langNames[answerLangCode] ?? answerLangCode;
+    var prompt = _buildQuestionPrompt(question, answerLangName);
+    if (pdfPages != null && pdfPages.trim().isNotEmpty) {
+      prompt =
+          '$prompt\nBase your answer only on page(s) ${pdfPages.trim()} of '
+          'the attached document.';
+    }
+    return _callGemini(prompt, documentFile);
+  }
+
+  Future<String> _callGemini(String prompt, File file) async {
+    final bytes = await file.readAsBytes();
+    final base64Data = base64Encode(bytes);
+    final mimeType = lookupMimeType(file.path) ?? 'image/jpeg';
+
     final response = await http.post(
       Uri.parse(_endpoint),
       headers: {'Content-Type': 'application/json'},
@@ -139,7 +179,7 @@ If nothing can be read, reply only with:
             "parts": [
               {"text": prompt},
               {
-                "inline_data": {"mime_type": mimeType, "data": base64Image},
+                "inline_data": {"mime_type": mimeType, "data": base64Data},
               },
             ],
           },

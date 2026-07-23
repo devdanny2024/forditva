@@ -310,4 +310,17 @@ class AppLocalizationsHu extends AppLocalizations {
   String pdfPageCounter(Object current, Object total) {
     return 'Oldal $current/$total';
   }
+
+  @override
+  String get documentQuestionTitle => 'Kérdés a dokumentumról';
+
+  @override
+  String get documentQuestionHint => 'Írd be a kérdésed…';
+
+  @override
+  String get documentQuestionAsk => 'Kérdés';
+
+  @override
+  String get documentQuestionError =>
+      'Nem sikerült választ kapni. Kérjük, próbáld újra.';
 }

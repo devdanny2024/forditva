@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-23, version 1.0.1+57**. Update the "Current status"
+current as of **2026-07-23, version 1.0.1+58**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -129,6 +129,15 @@ All shipped to main and built on CI:
    Locked in by `test/gemini_cost_test.dart`.
 4. **Play Store prep.** New package name + upload signing + `android-aab.yml`
    (see above). AAB build validated on CI.
+5. **"Ask about this document" button (Image page).** `lib/widgets/document_question_dialog.dart`
+   (`DocumentQuestionDialog`) — a modal with a text field where the user types
+   a free-text question about the loaded image/PDF; answered by Gemini from
+   the document's own content (`GeminiImageService.askAboutDocument`, reusing
+   the same inline_data call as translation). Answered in the app's UI
+   language, same convention as the Tutor explanation. New "?" icon
+   (`assets/png24/black/b_ask_question.png`, supplied by Markus) added to the
+   Image page's bottom icon row, next to the speaker. Costs WIU like image
+   translation (same `geminiWiuCost`, including the +30% fee margin).
 
 ## Open / blocked tasks (from the 17-22 Jul Telegram export)
 

@@ -657,6 +657,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Page {current}/{total}'**
   String pdfPageCounter(Object current, Object total);
+
+  /// No description provided for @documentQuestionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask about this document'**
+  String get documentQuestionTitle;
+
+  /// No description provided for @documentQuestionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type your question…'**
+  String get documentQuestionHint;
+
+  /// No description provided for @documentQuestionAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask'**
+  String get documentQuestionAsk;
+
+  /// No description provided for @documentQuestionError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t get an answer. Please try again.'**
+  String get documentQuestionError;
 }
 
 class _AppLocalizationsDelegate

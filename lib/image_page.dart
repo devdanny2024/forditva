@@ -16,6 +16,7 @@ import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:share_plus/share_plus.dart'; // your Gemini client
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
+import 'package:forditva/widgets/document_question_dialog.dart';
 import 'package:forditva/widgets/pdf_page_selector.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -189,6 +190,27 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       debugPrint('Image TTS failed: $e');
     }
   }
+  /// Opens the "ask a question about this document" modal (Markus,
+  /// 2026-07-23 voice note: a "?" button next to a translated PDF/image that
+  /// opens a field to type a question about it). Answered in the app's UI
+  /// language, same convention as [openTutor]'s explanation.
+  Future<void> _askQuestion() async {
+    final doc = _croppedImageFile ?? _imageFile;
+    if (doc == null || _isProcessing) return;
+    if (!await ensureWiuBalance(context)) return;
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder:
+          (_) => DocumentQuestionDialog(
+            file: doc,
+            pdfPages: _isPdf ? _pdfPageSpec : null,
+            answerLangCode:
+                Localizations.localeOf(context).languageCode.toUpperCase(),
+          ),
+    );
+  }
+
   bool _isProcessing = false;
   String _resultText = '';
 
@@ -1575,6 +1597,17 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       onTap: _speakResult,
                                       child: Image.asset(
                                         'assets/png24/black/b_speaker.png',
+                                        width: iconSize,
+                                        height: iconSize,
+                                      ),
+                                    ),
+                                    SizedBox(width: iconSize * 0.5),
+                                    // Ask a question about the loaded
+                                    // document (Markus, 2026-07-23).
+                                    GestureDetector(
+                                      onTap: _askQuestion,
+                                      child: Image.asset(
+                                        'assets/png24/black/b_ask_question.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),

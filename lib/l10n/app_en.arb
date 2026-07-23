@@ -119,5 +119,9 @@
       "current": {},
       "total": {}
     }
-  }
+  },
+  "documentQuestionTitle": "Ask about this document",
+  "documentQuestionHint": "Type your question…",
+  "documentQuestionAsk": "Ask",
+  "documentQuestionError": "Couldn't get an answer. Please try again."
 }
