@@ -213,6 +213,16 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   bool _isProcessing = false;
   String _resultText = '';
 
+  // Caches the last successful result per mode for the currently loaded
+  // document, so flipping the translate/explain toggle back to a mode
+  // already computed just redisplays it instead of calling Gemini (and
+  // spending WIU) again (Markus, 2026-07-24: "store in the cache when I am
+  // switching from explanation to translation mode, that it will not
+  // calculate again"). Cleared whenever a new document loads or the
+  // language pair changes, since either invalidates both results.
+  String? _translateResultCache;
+  String? _interpretResultCache;
+
   // Split/drag state
   double _splitRatio = 0.5;
   static const double _dividerH = 10.0;
@@ -773,6 +783,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                             if (_leftLang == newRightLang) {
                               _leftLang = _next(_leftLang, newRightLang);
                             }
+                            _translateResultCache = null;
+                            _interpretResultCache = null;
                           });
                           if (_imageFile != null) {
                             _processImage(imageFile: _imageFile!);
@@ -793,7 +805,14 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       }
 
       final cleaned = out.trim();
-      setState(() => _resultText = cleaned);
+      setState(() {
+        _resultText = cleaned;
+        if (_interpretMode) {
+          _interpretResultCache = cleaned;
+        } else {
+          _translateResultCache = cleaned;
+        }
+      });
       await _saveState(_croppedImageFile ?? _imageFile!, cleaned);
       if (cleaned.isNotEmpty && !cleaned.startsWith("Error:")) {
         await _saveState(_croppedImageFile ?? _imageFile!, cleaned);
@@ -958,10 +977,18 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         builder: (_) => PdfPageSelectorDialog(file: file),
       );
       if (selected == null || selected.isEmpty) return; // cancelled
+      // Clear the previous document's result here, not just inside
+      // _processImage: if the WIU balance check blocks that call, the old
+      // text was otherwise left on screen next to the newly loaded document
+      // (Markus, 2026-07-24: after loading a new file "you need to delete
+      // the lower panel").
       setState(() {
         _imageFile = file;
         _croppedImageFile = null;
         _pdfPageSpec = _pagesToSpec(selected);
+        _resultText = '';
+        _translateResultCache = null;
+        _interpretResultCache = null;
       });
       await _processImage(imageFile: file);
       return;
@@ -999,6 +1026,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       _imageFile = file;
       _croppedImageFile = cropped;
       _pdfPageSpec = null; // images have no page selection
+      _resultText = ''; // clear the previous document's result immediately
+      _translateResultCache = null;
+      _interpretResultCache = null;
     });
 
     await _processImage(imageFile: cropped ?? file);
@@ -1249,6 +1279,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           _croppedImageFile = null;
                                           _pdfPageSpec = null;
                                           _resultText = '';
+                                          _translateResultCache = null;
+                                          _interpretResultCache = null;
                                           _isProcessing = false;
                                           _laActive = false;
                                           _interpretMode = false;
@@ -1280,7 +1312,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                     GestureDetector(
                                       onTap: _showLoadSourceSheet,
                                       child: Image.asset(
-                                        'assets/png24/black/b_document.png',
+                                        // Was the generic document glyph;
+                                        // swapped for Markus's PDF icon to
+                                        // match the empty-state icons
+                                        // (2026-07-24: "replace the third
+                                        // small icon in upper panel with the
+                                        // new pdf file").
+                                        'assets/png24/black/b_pdf.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),
@@ -1555,18 +1593,31 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
                                     SizedBox(width: iconSize * 0.5),
                                     GestureDetector(
-                                      onTap:
-                                          () => setState(() {
-                                            _interpretMode = !_interpretMode;
-                                            if (_imageFile != null) {
-                                              _processImage(
-                                                imageFile: _imageFile!,
-                                              );
-                                            }
-                                          }),
-                                      // Same asset in both states (no built-in
-                                      // Material icon); active state shown via
-                                      // a highlight, not a different glyph.
+                                      onTap: () {
+                                        final cached =
+                                            !_interpretMode
+                                                ? _interpretResultCache
+                                                : _translateResultCache;
+                                        setState(() {
+                                          _interpretMode = !_interpretMode;
+                                          if (cached != null) {
+                                            _resultText = cached;
+                                          } else if (_imageFile != null) {
+                                            _processImage(
+                                              imageFile: _imageFile!,
+                                            );
+                                          }
+                                        });
+                                      },
+                                      // Distinct glyph per mode: the asset for
+                                      // explanation mode (b_explain_image.png)
+                                      // was supplied but never wired up, so
+                                      // the button showed the translate icon
+                                      // even while explaining, with only a
+                                      // background highlight to tell the
+                                      // modes apart (Markus, 2026-07-24
+                                      // screenshot: "wrong icon for the
+                                      // explanation mode").
                                       child: Container(
                                         padding: EdgeInsets.all(
                                           iconSize * 0.12,
@@ -1579,7 +1630,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                           shape: BoxShape.circle,
                                         ),
                                         child: Image.asset(
-                                          'assets/png24/black/b_translate.png',
+                                          _interpretMode
+                                              ? 'assets/png24/black/b_explain_image.png'
+                                              : 'assets/png24/black/b_translate.png',
                                           width: iconSize,
                                           height: iconSize,
                                         ),
@@ -1674,6 +1727,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
                       // clear old output
                       _resultText = '';
+                      _translateResultCache = null;
+                      _interpretResultCache = null;
                       _isProcessing = false;
                       _laActive = false;
                       _zoomLevel = 1.0;
@@ -1706,6 +1761,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
                       // clear old output
                       _resultText = '';
+                      _translateResultCache = null;
+                      _interpretResultCache = null;
                       _isProcessing = false;
                       _laActive = false;
                       _zoomLevel = 1.0;
@@ -1730,6 +1787,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
                       // clear old output
                       _resultText = '';
+                      _translateResultCache = null;
+                      _interpretResultCache = null;
                       _isProcessing = false;
                       _laActive = false;
                       _zoomLevel = 1.0;

@@ -296,7 +296,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String pdfImporterInstruction(Object count) {
-    return 'Das Dokument enthält $count einzelne Seiten. Welche davon sollen wir importieren? Wähle sie mit einem Klick in der Ecke aus.';
+    return 'Das Dokument enthält $count einzelne Seiten. Welche davon sollen wir importieren? Wähle mit einem Klick in die Ecke aus.';
   }
 
   @override
