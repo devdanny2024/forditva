@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-23, version 1.0.1+58**. Update the "Current status"
+current as of **2026-07-24, version 1.0.1+61**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -97,14 +97,21 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-23, v1.0.1+58)
+## Current status (2026-07-24, v1.0.1+61)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-23-ask-question.apk` (v1.0.1+58, package
+`Downloads\forditva-2026-07-24-upload-area.apk` (v1.0.1+61, package
 `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
 `037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). Contains
-the "ask a question about this document" feature. iOS +58 build path is the
-same commit and also succeeded on CI.
+everything through the upload-area text/icon rework, Markus's final ask-question
+copy, and a post-TestFlight tweak (upload-area text: black, 30% larger — was
+red 20px, hard to read against white). iOS +61 build path is the same commit
+and also succeeded on CI.
+
+Version history since +58: +59 = icon repositioning + Tutor header
+localization (commit `ddb6b5b`); +60 = upload-area text/icons + final
+ask-question copy; +61 = text color/size fix after Markus tested +60 on
+TestFlight.
 
 ## This session's work
 
@@ -161,6 +168,9 @@ All shipped to main and built on CI:
    with Markus's exact final DE/EN/HU copy (`document_qa_i18n.json`) — the
    dialog title, hint, button, and error text from item 5 above were English
    placeholders until now.
+8. **Upload-area text styling fix, 2026-07-24.** Markus tested +60 on
+   TestFlight and found the red 20px text hard to read against the white
+   background. Changed to black, 26px (30% larger).
 
 ## Open / blocked tasks (from the 17-22 Jul Telegram export)
 
