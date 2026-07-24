@@ -508,24 +508,6 @@ abstract class AppLocalizations {
   /// **'Type the text here or paste it from the clipboard.'**
   String get documentPlaceholder;
 
-  /// No description provided for @imagePickerLine1.
-  ///
-  /// In en, this message translates to:
-  /// **'CLICK TO TAKE A PHOTO OR'**
-  String get imagePickerLine1;
-
-  /// No description provided for @imagePickerLink.
-  ///
-  /// In en, this message translates to:
-  /// **'LOAD UP FROM'**
-  String get imagePickerLink;
-
-  /// No description provided for @imagePickerLine2.
-  ///
-  /// In en, this message translates to:
-  /// **' YOUR DEVICE.'**
-  String get imagePickerLine2;
-
   /// No description provided for @cropInstruction.
   ///
   /// In en, this message translates to:
@@ -667,7 +649,7 @@ abstract class AppLocalizations {
   /// No description provided for @documentQuestionHint.
   ///
   /// In en, this message translates to:
-  /// **'Type your question…'**
+  /// **'Type your question...'**
   String get documentQuestionHint;
 
   /// No description provided for @documentQuestionAsk.
@@ -681,6 +663,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t get an answer. Please try again.'**
   String get documentQuestionError;
+
+  /// No description provided for @uploadAreaTakePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get uploadAreaTakePhoto;
+
+  /// No description provided for @uploadAreaOr.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get uploadAreaOr;
+
+  /// No description provided for @uploadAreaUploadFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload an image or PDF'**
+  String get uploadAreaUploadFile;
 }
 
 class _AppLocalizationsDelegate

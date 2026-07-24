@@ -68,9 +68,6 @@
   "langMismatch": "Erkannte Sprache ist {detected}, aber deine ausgewählte Eingabe ist {selected}. Möchtest du die Eingabesprache wechseln?",
   "translateAction": "Übersetzen",
   "documentPlaceholder": "Hier tippen oder aus Zwischenablage einfügen.",
-  "imagePickerLine1": "KLICKE, UM EIN FOTO ZU MACHEN, ODER",
-  "imagePickerLink": "LADE EINS HOCH",
-  "imagePickerLine2": " VON DEINEM GERÄT.",
   "cropInstruction": "Forme mit deinem Finger den gewünschten Bereich",
   "errorTitle": "Verbindung nicht möglich",
   "errorMessage": "Wir konnten den Übersetzungsdienst nicht erreichen. Bitte prüfe deine Internetverbindung und versuche es erneut.",
@@ -99,7 +96,10 @@
   "pdfImporterInstruction": "Das Dokument enthält {count} einzelne Seiten. Welche davon sollen wir importieren? Wähle sie mit einem Klick in der Ecke aus.",
   "pdfPageCounter": "Seite {current}/{total}",
   "documentQuestionTitle": "Frage zu diesem Dokument stellen",
-  "documentQuestionHint": "Deine Frage eingeben…",
+  "documentQuestionHint": "Tippe deine Frage ein…",
   "documentQuestionAsk": "Fragen",
-  "documentQuestionError": "Konnte keine Antwort abrufen. Bitte versuche es erneut."
+  "documentQuestionError": "Antwort konnte nicht geladen werden. Bitte versuche es erneut.",
+  "uploadAreaTakePhoto": "Mach ein Foto",
+  "uploadAreaOr": "oder",
+  "uploadAreaUploadFile": "Lade ein Bild oder eine PDF hoch"
 }

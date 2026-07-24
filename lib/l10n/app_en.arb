@@ -74,9 +74,6 @@
   },
   "translateAction": "Translate",
   "documentPlaceholder": "Type the text here or paste it from the clipboard.",
-  "imagePickerLine1": "CLICK TO TAKE A PHOTO OR",
-  "imagePickerLink": "LOAD UP FROM",
-  "imagePickerLine2": " YOUR DEVICE.",
   "cropInstruction": "Shape with your finger the required area",
   "errorTitle": "Connection problem",
   "errorMessage": "We can't reach the translation service right now. Please check your internet connection and try again.",
@@ -121,7 +118,10 @@
     }
   },
   "documentQuestionTitle": "Ask about this document",
-  "documentQuestionHint": "Type your question…",
+  "documentQuestionHint": "Type your question...",
   "documentQuestionAsk": "Ask",
-  "documentQuestionError": "Couldn't get an answer. Please try again."
+  "documentQuestionError": "Couldn't get an answer. Please try again.",
+  "uploadAreaTakePhoto": "Take a photo",
+  "uploadAreaOr": "or",
+  "uploadAreaUploadFile": "Upload an image or PDF"
 }

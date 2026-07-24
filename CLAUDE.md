@@ -140,6 +140,27 @@ All shipped to main and built on CI:
    (`assets/png24/black/b_ask_question.png`, supplied by Markus) added to the
    Image page's bottom icon row, next to the speaker. Costs WIU like image
    translation (same `geminiWiuCost`, including the +30% fee margin).
+6. **Ask-question icon repositioning + Tutor header localization (2026-07-24,
+   commit `ddb6b5b`).** Markus's exact spec (voice note, 2026-07-23): the icon
+   row runs Paste, Share, Zoom, then the mode-switch button; the slot right
+   after it holds the ask-question icon (it had been sitting at the very end,
+   after the speaker), with the speaker last. Also fixed hardcoded English
+   "Key Vocabulary"/"Translation"/"Grammar Explanation" Tutor headers in
+   `textpage.dart`, `learning_list.dart`, `document_translation_page.dart` —
+   switched to the existing (already-localized) `AppLocalizations` strings,
+   already used correctly in `widgets/tutor_dialog.dart`. Conversation-page
+   Tutor modal widened (insetPadding 40→16, maxHeight 0.85→0.9), reported as
+   too small.
+7. **Upload-area text + icons (Image page empty state), 2026-07-24.** Replaced
+   the old single-sentence-with-inline-link empty state with Markus's exact
+   spec (`upload_area_i18n.json`): three lines — "Take a photo" / "or" /
+   "Upload an image or PDF" — first and third lines tappable, matching their
+   icon. Camera icon swapped from a generic Material icon to Markus's
+   `b_photo.png`; folder-open icon swapped to his new `assets/png24/black/b_pdf.png`.
+   Also replaced the "ask about this document" dialog's placeholder strings
+   with Markus's exact final DE/EN/HU copy (`document_qa_i18n.json`) — the
+   dialog title, hint, button, and error text from item 5 above were English
+   placeholders until now.
 
 ## Open / blocked tasks (from the 17-22 Jul Telegram export)
 
@@ -153,9 +174,15 @@ All shipped to main and built on CI:
 - **wir-in-ungarn scheduling + video-call confirmation email** (regio.is,
   Shahin's WordPress side): finish the scheduler and make the confirmation email
   actually send to the user when Markus schedules a video meeting.
-- **URL Shortener** — new project. Python backend (PostgreSQL) + Next.js
-  frontend; framework TBD (FastAPI vs Flask). Markus is generating a base with
-  AI; review before modifying.
+- **URL Shortener** — new project, shortens links to **wiu.hu** (short domain
+  for wir-in-ungarn.hu). Python backend (PostgreSQL) + Next.js frontend;
+  framework TBD (FastAPI vs Flask). Markus is generating a base with AI;
+  review before modifying. Markus, 2026-07-24: **wants Forditva finished
+  first** ("I need a working forditva before you can round up it") — don't
+  start this until Forditva is in a state Markus considers done.
+- **Audio player** — new project for wir-in-ungarn.hu, mentioned 2026-07-24.
+  No spec yet beyond "the audio player is also for wir-in-ungarn"; ask Markus
+  what it's for before starting.
 - **"tudva"** — new project. A discussion platform for the wir-in-ungarn
   community: users post/discuss in their own language (DE/HU/EN) and each sees
   every message translated into their own language in parallel columns; tasks

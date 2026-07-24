@@ -225,15 +225,6 @@ class AppLocalizationsHu extends AppLocalizations {
       'Írja be ide a szöveget, vagy illessze be a vágólapról.';
 
   @override
-  String get imagePickerLine1 => 'KATTINTS FÉNYKÉPKÉSZÍTÉSHEZ VAGY';
-
-  @override
-  String get imagePickerLink => 'TÖLTS FEL EGYET';
-
-  @override
-  String get imagePickerLine2 => ' AZ ESZKÖZÖDRŐL.';
-
-  @override
   String get cropInstruction => 'Rajzold körbe ujjaddal a kívánt területet';
 
   @override
@@ -312,15 +303,24 @@ class AppLocalizationsHu extends AppLocalizations {
   }
 
   @override
-  String get documentQuestionTitle => 'Kérdés a dokumentumról';
+  String get documentQuestionTitle => 'Kérdezz a dokumentumról';
 
   @override
   String get documentQuestionHint => 'Írd be a kérdésed…';
 
   @override
-  String get documentQuestionAsk => 'Kérdés';
+  String get documentQuestionAsk => 'Kérdezés';
 
   @override
   String get documentQuestionError =>
-      'Nem sikerült választ kapni. Kérjük, próbáld újra.';
+      'Nem sikerült lekérni a választ. Kérjük, próbáld újra.';
+
+  @override
+  String get uploadAreaTakePhoto => 'Készíts egy fotót';
+
+  @override
+  String get uploadAreaOr => 'vagy';
+
+  @override
+  String get uploadAreaUploadFile => 'Tölts fel egy képet vagy PDF-et';
 }

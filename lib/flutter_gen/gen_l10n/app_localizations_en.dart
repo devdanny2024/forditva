@@ -226,15 +226,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Type the text here or paste it from the clipboard.';
 
   @override
-  String get imagePickerLine1 => 'CLICK TO TAKE A PHOTO OR';
-
-  @override
-  String get imagePickerLink => 'LOAD UP FROM';
-
-  @override
-  String get imagePickerLine2 => ' YOUR DEVICE.';
-
-  @override
   String get cropInstruction => 'Shape with your finger the required area';
 
   @override
@@ -316,7 +307,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get documentQuestionTitle => 'Ask about this document';
 
   @override
-  String get documentQuestionHint => 'Type your question…';
+  String get documentQuestionHint => 'Type your question...';
 
   @override
   String get documentQuestionAsk => 'Ask';
@@ -324,4 +315,13 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get documentQuestionError =>
       'Couldn\'t get an answer. Please try again.';
+
+  @override
+  String get uploadAreaTakePhoto => 'Take a photo';
+
+  @override
+  String get uploadAreaOr => 'or';
+
+  @override
+  String get uploadAreaUploadFile => 'Upload an image or PDF';
 }

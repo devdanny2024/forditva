@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -1143,25 +1142,30 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                             // side, so loading a PDF is a
                                             // visible option and not only a
                                             // text link (Markus, 2026-07-15).
+                                            // Icons + wording supplied by
+                                            // Markus, 2026-07-24: photo icon
+                                            // + line 1 open the camera, PDF
+                                            // icon + line 3 open the file
+                                            // dialog.
                                             Row(
                                               mainAxisAlignment:
                                                   MainAxisAlignment.center,
                                               children: [
                                                 GestureDetector(
                                                   onTap: _takePhoto,
-                                                  child: const Icon(
-                                                    Icons.camera_alt,
-                                                    size: 80,
-                                                    color: navRed,
+                                                  child: Image.asset(
+                                                    'assets/png24/black/b_photo.png',
+                                                    width: 72,
+                                                    height: 72,
                                                   ),
                                                 ),
                                                 const SizedBox(width: 28),
                                                 GestureDetector(
                                                   onTap: _showLoadSourceSheet,
-                                                  child: const Icon(
-                                                    Icons.folder_open,
-                                                    size: 72,
-                                                    color: navRed,
+                                                  child: Image.asset(
+                                                    'assets/png24/black/b_pdf.png',
+                                                    width: 72,
+                                                    height: 72,
                                                   ),
                                                 ),
                                               ],
@@ -1172,38 +1176,52 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                   const EdgeInsets.symmetric(
                                                     horizontal: 2.0,
                                                   ),
-                                              child: Text.rich(
-                                                TextSpan(
-                                                  style:
-                                                      GoogleFonts.robotoCondensed(
+                                              child: Column(
+                                                children: [
+                                                  GestureDetector(
+                                                    onTap: _takePhoto,
+                                                    child: Text(
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      )!.uploadAreaTakePhoto,
+                                                      style: GoogleFonts.robotoCondensed(
                                                         fontSize: 20,
                                                         color: navRed,
-                                                      ),
-                                                  children: [
-                                                    TextSpan(
-                                                      text:
-                                                          '${AppLocalizations.of(context)!.imagePickerLine1}\n',
-                                                    ),
-                                                    TextSpan(
-                                                      text: AppLocalizations.of(context)!.imagePickerLink,
-                                                      style: const TextStyle(
                                                         fontWeight:
                                                             FontWeight.bold,
-                                                        decoration:
-                                                            TextDecoration
-                                                                .underline,
                                                       ),
-                                                      recognizer:
-                                                          TapGestureRecognizer()
-                                                            ..onTap =
-                                                                _showLoadSourceSheet,
+                                                      textAlign:
+                                                          TextAlign.center,
                                                     ),
-                                                    TextSpan(
-                                                      text: AppLocalizations.of(context)!.imagePickerLine2,
+                                                  ),
+                                                  Text(
+                                                    AppLocalizations.of(
+                                                      context,
+                                                    )!.uploadAreaOr,
+                                                    style:
+                                                        GoogleFonts.robotoCondensed(
+                                                          fontSize: 20,
+                                                          color: navRed,
+                                                        ),
+                                                  ),
+                                                  GestureDetector(
+                                                    onTap:
+                                                        _showLoadSourceSheet,
+                                                    child: Text(
+                                                      AppLocalizations.of(
+                                                        context,
+                                                      )!.uploadAreaUploadFile,
+                                                      style: GoogleFonts.robotoCondensed(
+                                                        fontSize: 20,
+                                                        color: navRed,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
                                                     ),
-                                                  ],
-                                                ),
-                                                textAlign: TextAlign.center,
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ],

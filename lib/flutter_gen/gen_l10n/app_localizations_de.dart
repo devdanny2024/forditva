@@ -226,15 +226,6 @@ class AppLocalizationsDe extends AppLocalizations {
       'Hier tippen oder aus Zwischenablage einfügen.';
 
   @override
-  String get imagePickerLine1 => 'KLICKE, UM EIN FOTO ZU MACHEN, ODER';
-
-  @override
-  String get imagePickerLink => 'LADE EINS HOCH';
-
-  @override
-  String get imagePickerLine2 => ' VON DEINEM GERÄT.';
-
-  @override
   String get cropInstruction =>
       'Forme mit deinem Finger den gewünschten Bereich';
 
@@ -317,12 +308,21 @@ class AppLocalizationsDe extends AppLocalizations {
   String get documentQuestionTitle => 'Frage zu diesem Dokument stellen';
 
   @override
-  String get documentQuestionHint => 'Deine Frage eingeben…';
+  String get documentQuestionHint => 'Tippe deine Frage ein…';
 
   @override
   String get documentQuestionAsk => 'Fragen';
 
   @override
   String get documentQuestionError =>
-      'Konnte keine Antwort abrufen. Bitte versuche es erneut.';
+      'Antwort konnte nicht geladen werden. Bitte versuche es erneut.';
+
+  @override
+  String get uploadAreaTakePhoto => 'Mach ein Foto';
+
+  @override
+  String get uploadAreaOr => 'oder';
+
+  @override
+  String get uploadAreaUploadFile => 'Lade ein Bild oder eine PDF hoch';
 }
