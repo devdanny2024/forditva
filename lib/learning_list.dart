@@ -118,14 +118,21 @@ class _LearningListPageState extends State<LearningListPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 _section(
-                                  'Grammar Explanation',
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.grammarExplanation,
                                   parsed['grammar_explanation'],
                                 ),
                                 _section(
-                                  'Key Vocabulary',
+                                  AppLocalizations.of(context)!.keyVocabulary,
                                   parsed['key_vocabulary'],
                                 ),
-                                _section('Translation', parsed['translation']),
+                                _section(
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.translationHeading,
+                                  parsed['translation'],
+                                ),
                                 const SizedBox(height: 16),
                               ],
                             ),

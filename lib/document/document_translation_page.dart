@@ -465,15 +465,21 @@ class _DocumentPlaceholderPageState extends State<DocumentPlaceholderPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       _buildSection(
-                                        "Grammar Explanation",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.grammarExplanation,
                                         parsed["grammar_explanation"],
                                       ),
                                       _buildSection(
-                                        "Key Vocabulary",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.keyVocabulary,
                                         parsed["key_vocabulary"],
                                       ),
                                       _buildSection(
-                                        "Translation",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.translationHeading,
                                         parsed["translation"],
                                       ),
                                     ],

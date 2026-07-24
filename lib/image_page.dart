@@ -1568,46 +1568,49 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       ),
                                     ),
                                     SizedBox(width: iconSize * 0.5),
-                                    // Reserve this slot's space even when
-                                    // hidden in interpret mode, so the speaker
-                                    // icon after it never shifts position.
-                                    Visibility(
-                                      visible: !_interpretMode,
-                                      maintainSize: true,
-                                      maintainAnimation: true,
-                                      maintainState: true,
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            _laActive = !_laActive;
-                                          });
-                                        },
-                                        child: Image.asset(
-                                          _laActive
-                                              ? 'assets/png24/black/b_one_language.png'
-                                              : 'assets/png24/black/b_both_languages.png',
-                                          width: iconSize,
-                                          height: iconSize,
+                                    // Right beside the mode button: in
+                                    // translate mode this is the one/both
+                                    // language toggle; in interpret mode that
+                                    // slot was empty, which is exactly where
+                                    // Markus wants the ask-a-question icon
+                                    // (voice note, 2026-07-23: "if the
+                                    // explanation mode is on, right beside the
+                                    // mode button there is no icon yet, and
+                                    // exactly there has to come up the
+                                    // question mark icon, and then the sound
+                                    // icon"). Previously ask-question sat
+                                    // after the speaker at the very end.
+                                    _interpretMode
+                                        ? GestureDetector(
+                                          onTap: _askQuestion,
+                                          child: Image.asset(
+                                            'assets/png24/black/b_ask_question.png',
+                                            width: iconSize,
+                                            height: iconSize,
+                                          ),
+                                        )
+                                        : GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _laActive = !_laActive;
+                                            });
+                                          },
+                                          child: Image.asset(
+                                            _laActive
+                                                ? 'assets/png24/black/b_one_language.png'
+                                                : 'assets/png24/black/b_both_languages.png',
+                                            width: iconSize,
+                                            height: iconSize,
+                                          ),
                                         ),
-                                      ),
-                                    ),
                                     SizedBox(width: iconSize * 0.5),
-                                    // Speaker — read the translated result aloud
+                                    // Speaker — read the translated result
+                                    // aloud. Last icon in the row, per
+                                    // Markus's spec above.
                                     GestureDetector(
                                       onTap: _speakResult,
                                       child: Image.asset(
                                         'assets/png24/black/b_speaker.png',
-                                        width: iconSize,
-                                        height: iconSize,
-                                      ),
-                                    ),
-                                    SizedBox(width: iconSize * 0.5),
-                                    // Ask a question about the loaded
-                                    // document (Markus, 2026-07-23).
-                                    GestureDetector(
-                                      onTap: _askQuestion,
-                                      child: Image.asset(
-                                        'assets/png24/black/b_ask_question.png',
                                         width: iconSize,
                                         height: iconSize,
                                       ),

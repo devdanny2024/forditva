@@ -556,13 +556,21 @@ class _TextPageState extends State<TextPage> {
 
             return Dialog(
               backgroundColor: Colors.white,
+              // Was the Material default (40 horizontal / 24 vertical),
+              // which made the modal read noticeably smaller than the rest
+              // of the app (Markus, 2026-07-23: "the screen with the tutor
+              // is too small").
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
                 side: const BorderSide(width: 0.5, color: Colors.black),
               ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
                 child: Column(
                   children: [
@@ -616,15 +624,21 @@ class _TextPageState extends State<TextPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       _buildSection(
-                                        "Grammar Explanation",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.grammarExplanation,
                                         parsed["grammar_explanation"],
                                       ),
                                       _buildSection(
-                                        "Key Vocabulary",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.keyVocabulary,
                                         parsed["key_vocabulary"],
                                       ),
                                       _buildSection(
-                                        "Translation",
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.translationHeading,
                                         parsed["translation"],
                                       ),
                                     ],
