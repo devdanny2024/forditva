@@ -1185,8 +1185,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                         context,
                                                       )!.uploadAreaTakePhoto,
                                                       style: GoogleFonts.robotoCondensed(
-                                                        fontSize: 20,
-                                                        color: navRed,
+                                                        fontSize: 26,
+                                                        color: Colors.black,
                                                         fontWeight:
                                                             FontWeight.bold,
                                                       ),
@@ -1200,8 +1200,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                     )!.uploadAreaOr,
                                                     style:
                                                         GoogleFonts.robotoCondensed(
-                                                          fontSize: 20,
-                                                          color: navRed,
+                                                          fontSize: 26,
+                                                          color: Colors.black,
                                                         ),
                                                   ),
                                                   GestureDetector(
@@ -1212,8 +1212,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                         context,
                                                       )!.uploadAreaUploadFile,
                                                       style: GoogleFonts.robotoCondensed(
-                                                        fontSize: 20,
-                                                        color: navRed,
+                                                        fontSize: 26,
+                                                        color: Colors.black,
                                                         fontWeight:
                                                             FontWeight.bold,
                                                       ),
