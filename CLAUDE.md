@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-24, version 1.0.1+61**. Update the "Current status"
+current as of **2026-07-24, version 1.0.1+63**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -97,21 +97,28 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-24, v1.0.1+61)
+## Current status (2026-07-24, v1.0.1+63)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-24-upload-area.apk` (v1.0.1+61, package
+`Downloads\forditva-2026-07-24-ask-icon-fix.apk` (v1.0.1+62, package
 `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
-`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). Contains
-everything through the upload-area text/icon rework, Markus's final ask-question
-copy, and a post-TestFlight tweak (upload-area text: black, 30% larger — was
-red 20px, hard to read against white). iOS +61 build path is the same commit
-and also succeeded on CI.
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). +63 built
+and succeeded on CI (both platforms) but has not yet been downloaded/verified
+in this handoff — do that before sending it to Markus.
 
 Version history since +58: +59 = icon repositioning + Tutor header
 localization (commit `ddb6b5b`); +60 = upload-area text/icons + final
 ask-question copy; +61 = text color/size fix after Markus tested +60 on
-TestFlight.
+TestFlight; +62 = ask-question icon made visible in translate mode (it had
+been interpret-mode-only, so most users never saw it); +63 = explanation-mode
+icon now distinct from translate icon, stale result on new upload fixed,
+per-mode result caching so toggling translate/explain doesn't re-spend WIU,
+loaded-PDF toolbar icon + PDF page-picker German wording (commit `87684cb`).
+
+Note: the iOS TestFlight upload for +62 failed once on a transient Apple
+Content Delivery error (500 then 409 "resource currently being updated") —
+the IPA itself built fine, a plain re-run of the failed job succeeded. Not a
+code issue; if it recurs, just re-run the job.
 
 ## This session's work
 
