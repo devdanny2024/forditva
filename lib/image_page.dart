@@ -1616,21 +1616,14 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       // explanation mode (b_explain_image.png)
                                       // was supplied but never wired up, so
                                       // the button showed the translate icon
-                                      // even while explaining, with only a
-                                      // background highlight to tell the
-                                      // modes apart (Markus, 2026-07-24
-                                      // screenshot: "wrong icon for the
-                                      // explanation mode").
+                                      // even while explaining. No background
+                                      // highlight, the glyph itself is the
+                                      // only signal now (Markus, 2026-07-25:
+                                      // "nearly correct. But NO grey
+                                      // background behind explain button").
                                       child: Container(
                                         padding: EdgeInsets.all(
                                           iconSize * 0.12,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              _interpretMode
-                                                  ? Colors.black12
-                                                  : Colors.transparent,
-                                          shape: BoxShape.circle,
                                         ),
                                         child: Image.asset(
                                           _interpretMode
