@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-24, version 1.0.1+63**. Update the "Current status"
+current as of **2026-07-25, version 1.0.1+64**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -97,28 +97,38 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-24, v1.0.1+63)
+## Current status (2026-07-25, v1.0.1+64)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-24-ask-icon-fix.apk` (v1.0.1+62, package
+`Downloads\forditva-2026-07-25-question-icon-mode-fix.apk` (v1.0.1+64, package
 `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
-`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). +63 built
-and succeeded on CI (both platforms) but has not yet been downloaded/verified
-in this handoff — do that before sending it to Markus.
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +64
+build path is the same commit and also succeeded on CI.
 
 Version history since +58: +59 = icon repositioning + Tutor header
 localization (commit `ddb6b5b`); +60 = upload-area text/icons + final
 ask-question copy; +61 = text color/size fix after Markus tested +60 on
 TestFlight; +62 = ask-question icon made visible in translate mode (it had
-been interpret-mode-only, so most users never saw it); +63 = explanation-mode
-icon now distinct from translate icon, stale result on new upload fixed,
-per-mode result caching so toggling translate/explain doesn't re-spend WIU,
-loaded-PDF toolbar icon + PDF page-picker German wording (commit `87684cb`).
+been interpret-mode-only, so most users never saw it, but this turned out to
+be wrong per +64 below); +63 = explanation-mode icon now distinct from
+translate icon, stale result on new upload fixed, per-mode result caching so
+toggling translate/explain doesn't re-spend WIU, loaded-PDF toolbar icon + PDF
+page-picker German wording (commit `87684cb`); +64 = **reverted +62** — Markus
+explicitly wants the ask-question icon shown only in explanation mode
+("This question icon must only be shown, when explanation mode is active"),
+swapped in his refined question-mark icon asset (sent 2026-07-24, never wired
+up until now), added more spacing between the upload-area icons and text.
 
 Note: the iOS TestFlight upload for +62 failed once on a transient Apple
 Content Delivery error (500 then 409 "resource currently being updated") —
 the IPA itself built fine, a plain re-run of the failed job succeeded. Not a
 code issue; if it recurs, just re-run the job.
+
+**Standing rule (Markus, 2026-07-24): never author final DE/HU translations
+myself.** Draft proposed copy and send it to Kayode to relay to Markus for
+correction before integrating — do not ship self-written German/Hungarian
+text directly. EN copy is fine to ship directly; text Markus has already
+supplied verbatim is pre-approved.
 
 ## This session's work
 
