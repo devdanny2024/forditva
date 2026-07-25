@@ -1200,7 +1200,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                 ),
                                               ],
                                             ),
-                                            const SizedBox(height: 8),
+                                            // Markus, 2026-07-24: "Bit more
+                                            // space between icons and text"
+                                            // (was 8).
+                                            const SizedBox(height: 16),
                                             Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -1639,49 +1642,37 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                       ),
                                     ),
                                     SizedBox(width: iconSize * 0.5),
-                                    // Right beside the mode button, in both
-                                    // modes (Markus, 2026-07-23: "right beside
-                                    // the mode button... has to come up the
-                                    // question mark icon, and then the sound
-                                    // icon"). Kept unconditional — an earlier
-                                    // version only showed it in interpret
-                                    // mode, which hid the feature entirely in
-                                    // translate mode, the default view
-                                    // (Markus, 2026-07-24: "i dont see the
-                                    // question mark?").
-                                    GestureDetector(
-                                      onTap: _askQuestion,
-                                      child: Image.asset(
-                                        'assets/png24/black/b_ask_question.png',
-                                        width: iconSize,
-                                        height: iconSize,
-                                      ),
-                                    ),
-                                    SizedBox(width: iconSize * 0.5),
-                                    // One/both-language toggle only makes
-                                    // sense in translate mode; space is
-                                    // reserved in interpret mode so the
-                                    // speaker after it never shifts position.
-                                    Visibility(
-                                      visible: !_interpretMode,
-                                      maintainSize: true,
-                                      maintainAnimation: true,
-                                      maintainState: true,
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            _laActive = !_laActive;
-                                          });
-                                        },
-                                        child: Image.asset(
-                                          _laActive
-                                              ? 'assets/png24/black/b_one_language.png'
-                                              : 'assets/png24/black/b_both_languages.png',
-                                          width: iconSize,
-                                          height: iconSize,
+                                    // Right beside the mode button: the
+                                    // ask-question icon only in explanation
+                                    // mode, the one/both-language toggle only
+                                    // in translate mode — mutually exclusive,
+                                    // so the slot is never empty (Markus,
+                                    // 2026-07-25: "This question icon must
+                                    // only be shown, when explanation mode is
+                                    // active").
+                                    _interpretMode
+                                        ? GestureDetector(
+                                          onTap: _askQuestion,
+                                          child: Image.asset(
+                                            'assets/png24/black/b_ask_question.png',
+                                            width: iconSize,
+                                            height: iconSize,
+                                          ),
+                                        )
+                                        : GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              _laActive = !_laActive;
+                                            });
+                                          },
+                                          child: Image.asset(
+                                            _laActive
+                                                ? 'assets/png24/black/b_one_language.png'
+                                                : 'assets/png24/black/b_both_languages.png',
+                                            width: iconSize,
+                                            height: iconSize,
+                                          ),
                                         ),
-                                      ),
-                                    ),
                                     SizedBox(width: iconSize * 0.5),
                                     // Speaker — read the translated result
                                     // aloud. Last icon in the row.
