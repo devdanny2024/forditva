@@ -150,7 +150,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           _langCode(Language.hu),
           _langCode(_leftLang == Language.hu ? _rightLang : _leftLang),
           explain: true,
-          uiLanguage: Localizations.localeOf(context).languageCode.toUpperCase(),
+          uiLanguage:
+              Localizations.localeOf(context).languageCode.toUpperCase(),
         )
         .then((explanation) {
           if (!mounted) return;
@@ -189,6 +190,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
       debugPrint('Image TTS failed: $e');
     }
   }
+
   /// Opens the "ask a question about this document" modal (Markus,
   /// 2026-07-23 voice note: a "?" button next to a translated PDF/image that
   /// opens a field to type a question about it). The dialog's own labels
@@ -231,6 +233,50 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   double _splitRatio = 0.5;
   static const double _dividerH = 10.0;
   double _zoomLevel = 1.0; // Default zoom factor (1x)
+
+  // Pinch-to-zoom for the result panel text. _zoomLevel already fed into the
+  // font-size math everywhere below, but nothing ever moved it away from 1.0
+  // (Markus, 2026-07-27 voice note: "I am not able to resize it with a
+  // finger gesture"). Tracked via raw Listener/pointer events rather than a
+  // GestureDetector's scale recognizer, since the latter would compete with
+  // the panel's own vertical ScrollView for single-finger drags; Listener
+  // only observes events, so normal one-finger scrolling is untouched and
+  // only genuine two-finger pinches move the zoom.
+  final Map<int, Offset> _resultPointers = {};
+  double? _pinchStartDistance;
+  double _pinchStartZoom = 1.0;
+
+  void _onResultPointerDown(PointerDownEvent event) {
+    _resultPointers[event.pointer] = event.position;
+    if (_resultPointers.length == 2) {
+      final points = _resultPointers.values.toList();
+      _pinchStartDistance = (points[0] - points[1]).distance;
+      _pinchStartZoom = _zoomLevel;
+    }
+  }
+
+  void _onResultPointerMove(PointerMoveEvent event) {
+    if (!_resultPointers.containsKey(event.pointer)) return;
+    _resultPointers[event.pointer] = event.position;
+    final startDistance = _pinchStartDistance;
+    if (_resultPointers.length == 2 &&
+        startDistance != null &&
+        startDistance > 0) {
+      final points = _resultPointers.values.toList();
+      final currentDistance = (points[0] - points[1]).distance;
+      setState(() {
+        _zoomLevel = (_pinchStartZoom * currentDistance / startDistance).clamp(
+          0.6,
+          2.0,
+        );
+      });
+    }
+  }
+
+  void _onResultPointerUp(PointerEvent event) {
+    _resultPointers.remove(event.pointer);
+    if (_resultPointers.length < 2) _pinchStartDistance = null;
+  }
 
   // Capture resolution for the picker. Was maxWidth 512 / quality 70, which
   // is far too small to read a document photo: the text was destroyed before
@@ -524,7 +570,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             final trans = (item['t'] ?? '').toString().trim();
             if (orig.isEmpty && trans.isEmpty) return const SizedBox.shrink();
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              // Was 8.0 — combined with the oversized 24px flat font this
+              // read as too much space between lines (Markus, 2026-07-27).
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -532,7 +580,11 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                     Text(
                       orig,
                       style: GoogleFonts.robotoCondensed(
-                        fontSize: 24.0 * _zoomLevel,
+                        // Was a flat 24.0, oversized for body text; also
+                        // never actually adjustable, _zoomLevel had no
+                        // gesture wired to it. Both fixed here.
+                        fontSize: 17.0 * _zoomLevel,
+                        height: 1.15,
                         fontWeight: FontWeight.w500,
                         color: navRed,
                       ),
@@ -543,7 +595,8 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                       child: Text(
                         trans,
                         style: GoogleFonts.robotoCondensed(
-                          fontSize: 24.0 * _zoomLevel,
+                          fontSize: 17.0 * _zoomLevel,
+                          height: 1.15,
                           fontWeight: FontWeight.w500,
                           color: navGreen,
                         ),
@@ -685,7 +738,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             // short/ambiguous fragments don't dominate detection (Markus,
             // 2026-07-10: genuine Hungarian misdetected as Portuguese).
             sampleText = maybeJson
-                .map((e) => (e is Map && e['o'] != null) ? e['o'].toString() : '')
+                .map(
+                  (e) => (e is Map && e['o'] != null) ? e['o'].toString() : '',
+                )
                 .where((s) => s.isNotEmpty && !s.contains('{unsafe}'))
                 .join(' ');
           }
@@ -703,9 +758,9 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         // and punctuation say nothing about the language, so the "enough
         // text to judge" guard counts letters only.
         final letterCount =
-            RegExp(r'[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰäöüßÄÖÜàâçèêëîïôùûÀÂÇÈÊËÎÏÔÙÛñÑа-яА-Я]')
-                .allMatches(sampleText)
-                .length;
+            RegExp(
+              r'[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰäöüßÄÖÜàâçèêëîïôùûÀÂÇÈÊËÎÏÔÙÛñÑа-яА-Я]',
+            ).allMatches(sampleText).length;
 
         final langCodes = {
           Language.hu: 'HU',
@@ -735,76 +790,75 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
             langCodes.containsValue(detected) &&
             detected != langCodes[_rightLang]) {
           if (mounted) {
-          await showDialog(
-            context: context,
-            builder:
-                (context) => AlertDialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  content: Text(
-                    AppLocalizations.of(context)!.langMismatch(
-                      detected,
-                      langCodes[_rightLang] ?? '',
+            await showDialog(
+              context: context,
+              builder:
+                  (context) => AlertDialog(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-                  actionsPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  actions: [
-                    // ❌ CLOSE
-                    IconButton(
-                      icon: Image.asset(
-                        'assets/images/close.png',
-                        width: 28,
-                        height: 28,
-                        color: navRed,
-                      ),
-                      onPressed: () => Navigator.of(context).pop(),
+                    content: Text(
+                      AppLocalizations.of(
+                        context,
+                      )!.langMismatch(detected, langCodes[_rightLang] ?? ''),
                     ),
-                    // ✅ CHECK = apply detected language
-                    IconButton(
-                      icon: Image.asset(
-                        'assets/images/check.png',
-                        width: 28,
-                        height: 28,
-                        color: navGreen,
+                    actionsPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    actions: [
+                      // ❌ CLOSE
+                      IconButton(
+                        icon: Image.asset(
+                          'assets/images/close.png',
+                          width: 28,
+                          height: 28,
+                          color: navRed,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) return;
-                          final newRightLang =
-                              langCodes.entries
-                                  .firstWhere((e) => e.value == detected)
-                                  .key;
-                          setState(() {
-                            _rightLang = newRightLang;
-                            // Guard against both sides ending up on the same
-                            // language (e.g. accepting "detected DE" while
-                            // the left side is already DE).
-                            if (_leftLang == newRightLang) {
-                              _leftLang = _next(_leftLang, newRightLang);
+                      // ✅ CHECK = apply detected language
+                      IconButton(
+                        icon: Image.asset(
+                          'assets/images/check.png',
+                          width: 28,
+                          height: 28,
+                          color: navGreen,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            final newRightLang =
+                                langCodes.entries
+                                    .firstWhere((e) => e.value == detected)
+                                    .key;
+                            setState(() {
+                              _rightLang = newRightLang;
+                              // Guard against both sides ending up on the same
+                              // language (e.g. accepting "detected DE" while
+                              // the left side is already DE).
+                              if (_leftLang == newRightLang) {
+                                _leftLang = _next(_leftLang, newRightLang);
+                              }
+                              _translateResultCache = null;
+                              _interpretResultCache = null;
+                            });
+                            if (_imageFile != null) {
+                              _processImage(imageFile: _imageFile!);
                             }
-                            _translateResultCache = null;
-                            _interpretResultCache = null;
                           });
-                          if (_imageFile != null) {
-                            _processImage(imageFile: _imageFile!);
-                          }
-                        });
-                      },
-                    ),
-                  ],
-                ),
-          );
-        }
-        setState(() {
-          _isProcessing = false;
-          _resultText = '';
-        });
-        return;
+                        },
+                      ),
+                    ],
+                  ),
+            );
+          }
+          setState(() {
+            _isProcessing = false;
+            _resultText = '';
+          });
+          return;
         }
       }
 
@@ -1043,8 +1097,10 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   @override
   Widget build(BuildContext context) {
     _updateHasHungarianText();
-    final double boxW = MediaQuery.of(context).size.width.clamp(0, 486).toDouble() - 32;
-    final double switcherW = (MediaQuery.of(context).size.width * 0.85).clamp(0, 350).toDouble();
+    final double boxW =
+        MediaQuery.of(context).size.width.clamp(0, 486).toDouble() - 32;
+    final double switcherW =
+        (MediaQuery.of(context).size.width * 0.85).clamp(0, 350).toDouble();
     const double switcherH = 55;
     const double flagSize = 50;
     const double switchSize = 50;
@@ -1221,12 +1277,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                       AppLocalizations.of(
                                                         context,
                                                       )!.uploadAreaTakePhoto,
-                                                      style: GoogleFonts.robotoCondensed(
-                                                        fontSize: 26,
-                                                        color: Colors.black,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
+                                                      style:
+                                                          GoogleFonts.robotoCondensed(
+                                                            fontSize: 26,
+                                                            color: Colors.black,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
                                                       textAlign:
                                                           TextAlign.center,
                                                     ),
@@ -1242,18 +1299,18 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                                         ),
                                                   ),
                                                   GestureDetector(
-                                                    onTap:
-                                                        _showLoadSourceSheet,
+                                                    onTap: _showLoadSourceSheet,
                                                     child: Text(
                                                       AppLocalizations.of(
                                                         context,
                                                       )!.uploadAreaUploadFile,
-                                                      style: GoogleFonts.robotoCondensed(
-                                                        fontSize: 26,
-                                                        color: Colors.black,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
+                                                      style:
+                                                          GoogleFonts.robotoCondensed(
+                                                            fontSize: 26,
+                                                            color: Colors.black,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
                                                       textAlign:
                                                           TextAlign.center,
                                                     ),
@@ -1433,85 +1490,100 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                                   left: 16,
                                   right: 16,
                                   bottom: iconRowH + 8,
-                                  child: Scrollbar(
-                                    controller: _scrollController,
-                                    thumbVisibility: true,
-                                    child: SingleChildScrollView(
+                                  child: Listener(
+                                    onPointerDown: _onResultPointerDown,
+                                    onPointerMove: _onResultPointerMove,
+                                    onPointerUp: _onResultPointerUp,
+                                    onPointerCancel: _onResultPointerUp,
+                                    child: Scrollbar(
                                       controller: _scrollController,
-                                      child: Builder(
-                                        builder: (_) {
-                                          final panelH =
-                                              panelConstraints.maxHeight;
-                                          final panelW =
-                                              panelConstraints.maxWidth;
-                                          final res =
-                                              _resultText.isNotEmpty
-                                                  ? _resultText
-                                                  : _placeholderText;
-                                          final htmlStr = stripHtmlCodeFence(
-                                            res,
-                                          );
-                                          final salvagedJson =
-                                              _isJsonArray(res)
-                                                  ? res
-                                                  : _extractJsonArray(res);
-                                          if (salvagedJson != null) {
-                                            return formattedJsonResult(
-                                              salvagedJson,
-                                              panelH,
-                                              onlyTranslated:
-                                                  _laActive, // Hide original if LA is active
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _scrollController,
+                                        child: Builder(
+                                          builder: (_) {
+                                            final panelH =
+                                                panelConstraints.maxHeight;
+                                            final panelW =
+                                                panelConstraints.maxWidth;
+                                            final res =
+                                                _resultText.isNotEmpty
+                                                    ? _resultText
+                                                    : _placeholderText;
+                                            final htmlStr = stripHtmlCodeFence(
+                                              res,
                                             );
-                                          } else if (_isHtmlDoc(htmlStr)) {
-                                            return Html(
-                                              data: htmlStr,
-                                              style: {
-                                                "body": Style(
-                                                  fontSize: FontSize(
-                                                    calculateFontSizes(
-                                                          res,
-                                                          panelH,
-                                                        ) *
-                                                        _zoomLevel,
-                                                  ),
-                                                  fontFamily:
-                                                      GoogleFonts.robotoCondensed()
-                                                          .fontFamily,
-                                                ),
-                                              },
-                                            );
-                                          } else {
-                                            // Non-empty but neither valid
-                                            // JSON nor HTML: Gemini broke its
-                                            // own strict-output format
-                                            // (Markus, 2026-07-10: raw
-                                            // reasoning text leaked into the
-                                            // result). Never show that raw
-                                            // text — fall back to a clean
-                                            // message, same as an unclear
-                                            // image. Empty/placeholder text
-                                            // still renders as before.
-                                            final shown =
-                                                res.isEmpty
+                                            final salvagedJson =
+                                                _isJsonArray(res)
                                                     ? res
-                                                    : AppLocalizations.of(
-                                                      context,
-                                                    )!.imageNotClearBody;
-                                            return Text(
-                                              shown,
-                                              style:
-                                                  GoogleFonts.robotoCondensed(
-                                                    fontSize:
-                                                        calculateFontSizes(
-                                                          shown,
-                                                          panelH,
-                                                        ) *
-                                                        _zoomLevel,
-                                                    letterSpacing: -0.3,
+                                                    : _extractJsonArray(res);
+                                            if (salvagedJson != null) {
+                                              return formattedJsonResult(
+                                                salvagedJson,
+                                                panelH,
+                                                onlyTranslated:
+                                                    _laActive, // Hide original if LA is active
+                                              );
+                                            } else if (_isHtmlDoc(htmlStr)) {
+                                              return Html(
+                                                data: htmlStr,
+                                                style: {
+                                                  "body": Style(
+                                                    fontSize: FontSize(
+                                                      calculateFontSizes(
+                                                            res,
+                                                            panelH,
+                                                          ) *
+                                                          _zoomLevel,
+                                                    ),
+                                                    // Tighter than the
+                                                    // library's 1.2 default,
+                                                    // paired with the smaller
+                                                    // font above (Markus,
+                                                    // 2026-07-27: "spacing
+                                                    // between the lines are
+                                                    // really big").
+                                                    lineHeight:
+                                                        LineHeight.number(0.95),
+                                                    fontFamily:
+                                                        GoogleFonts.robotoCondensed()
+                                                            .fontFamily,
                                                   ),
-                                            );
-                                          }
-                                        },
+                                                },
+                                              );
+                                            } else {
+                                              // Non-empty but neither valid
+                                              // JSON nor HTML: Gemini broke its
+                                              // own strict-output format
+                                              // (Markus, 2026-07-10: raw
+                                              // reasoning text leaked into the
+                                              // result). Never show that raw
+                                              // text — fall back to a clean
+                                              // message, same as an unclear
+                                              // image. Empty/placeholder text
+                                              // still renders as before.
+                                              final shown =
+                                                  res.isEmpty
+                                                      ? res
+                                                      : AppLocalizations.of(
+                                                        context,
+                                                      )!.imageNotClearBody;
+                                              return Text(
+                                                shown,
+                                                style:
+                                                    GoogleFonts.robotoCondensed(
+                                                      fontSize:
+                                                          calculateFontSizes(
+                                                            shown,
+                                                            panelH,
+                                                          ) *
+                                                          _zoomLevel,
+                                                      letterSpacing: -0.3,
+                                                    ),
+                                              );
+                                            }
+                                          },
+                                        ),
                                       ),
                                     ),
                                   ),

@@ -45,8 +45,12 @@ double calculateFontSize(String text) {
 }
 
 double calculateFontSizes(String text, double panelH) {
-  const double maxFont = 50;
-  const double minFont = 25;
+  // Was maxFont 50 / minFont 25 — genuinely oversized for a reading panel
+  // (Markus, 2026-07-27 voice note: "the font size and the spacing between
+  // the lines are really big"). Halved to a normal readable-body-text range;
+  // the panel's own pinch-to-zoom (_zoomLevel) scales up from here if needed.
+  const double maxFont = 26;
+  const double minFont = 14;
   // Tighter font for smaller panels:
   double scaleFactor = (panelH / 200).clamp(0.5, 1.0); // tweak as needed
   double scaled = maxFont * scaleFactor - (text.length * 0.15);
