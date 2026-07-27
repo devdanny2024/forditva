@@ -93,7 +93,12 @@ class _DocumentQuestionDialogState extends State<DocumentQuestionDialog> {
               const SizedBox(height: 16),
               TextField(
                 controller: _controller,
-                minLines: 1,
+                // Was minLines: 1 — started as a single line, so nothing
+                // signaled that longer questions were welcome (Markus,
+                // 2026-07-25 voice note: "make the textfield a bit higher...
+                // so the user can see that they can also type longer
+                // questions").
+                minLines: 3,
                 maxLines: 3,
                 enabled: !_loading,
                 style: GoogleFonts.robotoCondensed(fontSize: 18),

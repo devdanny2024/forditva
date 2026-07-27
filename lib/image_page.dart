@@ -191,8 +191,13 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   }
   /// Opens the "ask a question about this document" modal (Markus,
   /// 2026-07-23 voice note: a "?" button next to a translated PDF/image that
-  /// opens a field to type a question about it). Answered in the app's UI
-  /// language, same convention as [openTutor]'s explanation.
+  /// opens a field to type a question about it). The dialog's own labels
+  /// (title/hint/buttons) are in the app's UI language via AppLocalizations,
+  /// but the generated answer itself follows the selected target language
+  /// (_leftLang), same as the translation output (Markus, 2026-07-25 voice
+  /// note: "the translations need to go to this defined target language, so
+  /// here also the explanation for the PDF file" — this used to answer in
+  /// the UI language instead).
   Future<void> _askQuestion() async {
     final doc = _croppedImageFile ?? _imageFile;
     if (doc == null || _isProcessing) return;
@@ -204,8 +209,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
           (_) => DocumentQuestionDialog(
             file: doc,
             pdfPages: _isPdf ? _pdfPageSpec : null,
-            answerLangCode:
-                Localizations.localeOf(context).languageCode.toUpperCase(),
+            answerLangCode: _langCode(_leftLang),
           ),
     );
   }
