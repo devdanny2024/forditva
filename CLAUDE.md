@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-25, version 1.0.1+64**. Update the "Current status"
+current as of **2026-07-27, version 1.0.1+65**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -97,12 +97,12 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-25, v1.0.1+64)
+## Current status (2026-07-27, v1.0.1+65)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-25-question-icon-mode-fix.apk` (v1.0.1+64, package
+`Downloads\forditva-2026-07-27-no-grey-explain-bg.apk` (v1.0.1+65, package
 `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
-`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +64
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +65
 build path is the same commit and also succeeded on CI.
 
 Version history since +58: +59 = icon repositioning + Tutor header
@@ -117,7 +117,11 @@ page-picker German wording (commit `87684cb`); +64 = **reverted +62** — Markus
 explicitly wants the ask-question icon shown only in explanation mode
 ("This question icon must only be shown, when explanation mode is active"),
 swapped in his refined question-mark icon asset (sent 2026-07-24, never wired
-up until now), added more spacing between the upload-area icons and text.
+up until now), added more spacing between the upload-area icons and text;
++65 = Markus tested +64 and confirmed the per-mode icon fix was right, but
+flagged a leftover grey circular highlight behind the mode button ("nearly
+correct. But NO grey background behind explain button") — dropped it, the
+distinct glyph per mode is enough on its own.
 
 Note: the iOS TestFlight upload for +62 failed once on a transient Apple
 Content Delivery error (500 then 409 "resource currently being updated") —
