@@ -15,6 +15,7 @@ import 'package:forditva/services/gemini_tts_service.dart';
 import 'package:share_plus/share_plus.dart'; // your Gemini client
 import 'package:forditva/utils/utils.dart';
 import 'package:forditva/widgets/cropper.dart';
+import 'package:forditva/services/document_conversion_service.dart';
 import 'package:forditva/widgets/document_question_dialog.dart';
 import 'package:forditva/widgets/pdf_page_selector.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -217,6 +218,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
   }
 
   bool _isProcessing = false;
+  // Shown under the loader while _isProcessing (Markus, 2026-08: separate
+  // "Converting document..." / "Analyzing and translating..." states so it's
+  // clear why Office/text files take an extra moment before translation
+  // starts). Empty = no status text (e.g. a plain image/PDF still shows just
+  // the loader).
+  String _statusText = '';
   String _resultText = '';
 
   // Caches the last successful result per mode for the currently loaded
@@ -693,6 +700,7 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
 
     setState(() {
       _isProcessing = true;
+      _statusText = AppLocalizations.of(context)!.analyzingAndTranslating;
       _resultText = '';
     });
     await _saveState(_croppedImageFile ?? _imageFile!, _resultText);
@@ -922,7 +930,12 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _statusText = '';
+        });
+      }
     }
   }
 
@@ -1012,47 +1025,114 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
     await _loadImageWithCropper(File(picked.path));
   }
 
-  /// Device files: images (which still go through the cropper) and PDFs
-  /// (which skip it and go straight to Gemini, which accepts
-  /// application/pdf as inline_data). Markus, 2026-07-14.
+  /// Extensions Gemini can't read directly (inline_data only accepts images
+  /// and PDF), so they're converted to PDF via our own LibreOffice-backed
+  /// service first, then handled exactly like an uploaded PDF (Markus, 2026-08
+  /// proposal).
+  static const _officeExtensions = {
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'odt',
+    'ods',
+    'txt',
+  };
+
+  final _conversionService = DocumentConversionService();
+
+  /// Device files: images (which still go through the cropper), PDFs, and
+  /// Office/text documents (converted to PDF first) — all three end up
+  /// either in the cropper flow or the PDF page-picker flow. Markus,
+  /// 2026-07-14 (PDF support), 2026-08 (Office/text via conversion).
   Future<void> _pickFromFiles() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf'],
+      allowedExtensions: [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'heic',
+        'pdf',
+        ..._officeExtensions,
+      ],
     );
     final path = result?.files.single.path;
     if (path == null) return;
 
-    final file = File(path);
-    if (path.toLowerCase().endsWith('.pdf')) {
-      // Nothing to crop on a PDF. Let the user tick the pages to process on a
-      // visual preview before spending tokens on the whole document (Markus,
-      // 2026-07-16: pick the pages instead of typing a page number).
-      if (!mounted) return;
-      final selected = await showDialog<List<int>?>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => PdfPageSelectorDialog(file: file),
-      );
-      if (selected == null || selected.isEmpty) return; // cancelled
-      // Clear the previous document's result here, not just inside
-      // _processImage: if the WIU balance check blocks that call, the old
-      // text was otherwise left on screen next to the newly loaded document
-      // (Markus, 2026-07-24: after loading a new file "you need to delete
-      // the lower panel").
-      setState(() {
-        _imageFile = file;
-        _croppedImageFile = null;
-        _pdfPageSpec = _pagesToSpec(selected);
-        _resultText = '';
-        _translateResultCache = null;
-        _interpretResultCache = null;
-      });
-      await _processImage(imageFile: file);
+    final extension = path.split('.').last.toLowerCase();
+    File file = File(path);
+
+    if (_officeExtensions.contains(extension)) {
+      final converted = await _convertOfficeDocument(file);
+      if (converted == null) return; // failure already shown to the user
+      file = converted;
+    } else if (extension != 'pdf') {
+      _pdfPageSpec = null;
+      await _loadImageWithCropper(file);
       return;
     }
-    _pdfPageSpec = null;
-    await _loadImageWithCropper(file);
+
+    // PDF (uploaded directly, or converted from an Office/text document):
+    // nothing to crop. Let the user tick the pages to process on a visual
+    // preview before spending tokens on the whole document (Markus,
+    // 2026-07-16: pick the pages instead of typing a page number).
+    if (!mounted) return;
+    final selected = await showDialog<List<int>?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PdfPageSelectorDialog(file: file),
+    );
+    if (selected == null || selected.isEmpty) return; // cancelled
+    // Clear the previous document's result here, not just inside
+    // _processImage: if the WIU balance check blocks that call, the old
+    // text was otherwise left on screen next to the newly loaded document
+    // (Markus, 2026-07-24: after loading a new file "you need to delete
+    // the lower panel").
+    setState(() {
+      _imageFile = file;
+      _croppedImageFile = null;
+      _pdfPageSpec = _pagesToSpec(selected);
+      _resultText = '';
+      _translateResultCache = null;
+      _interpretResultCache = null;
+    });
+    await _processImage(imageFile: file);
+  }
+
+  /// Converts an Office/text file to PDF via [DocumentConversionService],
+  /// showing the same status text convention as [_processImage]. Returns
+  /// null (having already shown [conversionFailedTitle]) on any failure.
+  Future<File?> _convertOfficeDocument(File file) async {
+    setState(
+      () => _statusText = AppLocalizations.of(context)!.convertingDocument,
+    );
+    try {
+      return await _conversionService.convertToPdf(file);
+    } catch (e) {
+      debugPrint('Document conversion failed: $e');
+      if (mounted) {
+        final loc = AppLocalizations.of(context)!;
+        showDialog(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: Text(loc.conversionFailedTitle),
+                content: Text(loc.conversionFailedBody),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(loc.ok),
+                  ),
+                ],
+              ),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _statusText = '');
+    }
   }
 
   /// Turns a sorted list of page numbers into a compact spec for the Gemini
@@ -1478,10 +1558,29 @@ class _ImagePlaceholderPageState extends State<ImagePlaceholderPage> {
                               // just make sure you use chosenSize in the HTML/Text!
                               if (_isProcessing)
                                 Center(
-                                  child: Image.asset(
-                                    'assets/images/loader.gif',
-                                    width: 100, // or any size you want
-                                    height: 100,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Image.asset(
+                                        'assets/images/loader.gif',
+                                        width: 100,
+                                        height: 100,
+                                      ),
+                                      if (_statusText.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 8,
+                                          ),
+                                          child: Text(
+                                            _statusText,
+                                            style:
+                                                GoogleFonts.robotoCondensed(
+                                                  fontSize: 16,
+                                                  color: navRed,
+                                                ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 )
                               else

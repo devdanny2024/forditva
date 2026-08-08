@@ -101,5 +101,5 @@
   "documentQuestionError": "Nem sikerült lekérni a választ. Kérjük, próbáld újra.",
   "uploadAreaTakePhoto": "Készíts egy fotót",
   "uploadAreaOr": "vagy",
-  "uploadAreaUploadFile": "Tölts fel egy képet vagy PDF-et"
+  "uploadAreaUploadFile": "Kép vagy dokumentum feltöltése (PDF, Word, Excel, OpenDocument vagy szövegfájl)"
 }

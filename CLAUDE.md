@@ -1,7 +1,7 @@
 # Forditva — Project Notes for Claude
 
 Handoff notes so any Claude (or developer) can pick up this project. Kept
-current as of **2026-07-27, version 1.0.1+66**. Update the "Current status"
+current as of **2026-08-05, version 1.0.1+68**. Update the "Current status"
 and "Open / blocked" sections as work lands.
 
 ## What this is
@@ -196,6 +196,69 @@ All shipped to main and built on CI:
 8. **Upload-area text styling fix, 2026-07-24.** Markus tested +60 on
    TestFlight and found the red 20px text hard to read against the white
    background. Changed to black, 26px (30% larger).
+
+## Document-conversion feature (Office/text → PDF), 2026-08-05, v1.0.1+68
+
+Gemini's `inline_data` only accepts images and PDF, not DOC/DOCX/XLS/XLSX/
+ODT/ODS/TXT. Markus approved converting those formats to PDF via a
+self-hosted LibreOffice service first, then feeding the result through the
+**existing** PDF path unchanged (page picker, then `_callGemini`). Full
+design discussion and Markus's decisions are in the 2026-08 Telegram export;
+the short version:
+
+- **Client side (this repo, done):** `lib/image_page.dart`'s file picker now
+  accepts doc/docx/xls/xlsx/odt/ods/txt. Non-image/PDF files go through
+  `lib/services/document_conversion_service.dart` (`DocumentConversionService.
+  convertToPdf`), which POSTs to `CONVERSION_API_BASE_URL/convert-to-pdf`
+  (`.env`, dormant/blank until the domain exists) with a Firebase App Check
+  token, then the result flows into the same `PdfPageSelectorDialog` +
+  `_processImage` path a directly-uploaded PDF uses. Conversion failure shows
+  a dedicated dialog (`conversionFailedTitle`/`Body`), and `_statusText`
+  shows "Converting document..." then "Analyzing and translating..." during
+  processing (was silent before, just the loader gif).
+- **Auth (Markus, 2026-08): explicitly no bundled static API key** ("we
+  should not use a bundled static API key... I prefer the properly secure
+  solution over the short-lived-token fallback"). Uses Firebase App Check —
+  Play Integrity provider on Android, App Attest on iOS — via `main.dart`'s
+  `_initFirebaseAppCheck()`. This proves a request comes from a genuine,
+  unmodified app install with nothing embedded to extract.
+- **Backend (new, `conversion-service/`, code only, not deployed):** Node +
+  Express + LibreOffice headless in Docker. `/convert-to-pdf` requires a
+  valid App Check token (verified server-side via `firebase-admin`) and is
+  rate-limited (20 req/15min/IP). 4MB file size limit (Markus's number, "keep
+  conversion time, server load, and abuse risk under control"). Deletes the
+  original + converted files immediately after each response. See
+  `conversion-service/README.md`.
+- **Cost:** no separate surcharge — converted files bill through the exact
+  same `geminiWiuCost` (+30% margin) as any other PDF, by construction (they
+  become a real PDF before Gemini ever sees them).
+- **WIU balance note (Markus, 2026-08):** explicitly flagged as a *separate*
+  issue to revisit later — the local-only (not server-verified) WIU balance
+  is unrelated to this endpoint's auth, App Check protects the conversion
+  server from abuse, it does not make WIU spend server-authoritative.
+
+**BLOCKED before this can actually run:**
+1. **A real Firebase project.** `lib/firebase_options.dart` is a placeholder
+   (`REPLACE_ME` values) — App Check silently no-ops until real ones are in.
+   Needs: create the project, register the Android app
+   (`hu.wirinungarn.forditva`) and iOS app (`hu.wirinungarn.forditva3`),
+   enable App Check with Play Integrity (Android) + App Attest (iOS)
+   providers, generate a service account for the backend
+   (`GOOGLE_APPLICATION_CREDENTIALS`). Needs a Google account with rights to
+   create Firebase/GCP projects — ask Markus whose account this should live
+   under, same question as Play Console.
+2. **Hosting/domain from Andy** — message already sent (2026-08), asking for
+   a subdomain (Markus's preference `convert.wir-in-ungarn.hu`) and port on
+   the same server as `wiu.hu`/`wir-verify`. Once assigned: set
+   `CONVERSION_API_BASE_URL` in `.env` (+ the GitHub `DOTENV` secret) and
+   deploy `conversion-service/`.
+3. **German/Hungarian for two remaining strings** — Markus said he'd send
+   these "together with other UI texts": the conversion-failure dialog
+   (`conversionFailedTitle`/`Body`) and the two progress states
+   (`convertingDocument`/`analyzingAndTranslating`). English ships now;
+   DE/HU currently fall back to English automatically (flutter gen-l10n
+   default behavior) until he sends them — do not write these myself, per
+   the standing translation rule below.
 
 ## Open / blocked tasks (from the 17-22 Jul Telegram export)
 

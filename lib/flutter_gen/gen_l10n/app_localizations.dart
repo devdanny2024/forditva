@@ -679,8 +679,32 @@ abstract class AppLocalizations {
   /// No description provided for @uploadAreaUploadFile.
   ///
   /// In en, this message translates to:
-  /// **'Upload an image or PDF'**
+  /// **'Upload an image or document (PDF, Word, Excel, OpenDocument, or text file)'**
   String get uploadAreaUploadFile;
+
+  /// No description provided for @convertingDocument.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting document...'**
+  String get convertingDocument;
+
+  /// No description provided for @analyzingAndTranslating.
+  ///
+  /// In en, this message translates to:
+  /// **'Analyzing and translating...'**
+  String get analyzingAndTranslating;
+
+  /// No description provided for @conversionFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This document could not be converted.'**
+  String get conversionFailedTitle;
+
+  /// No description provided for @conversionFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again.'**
+  String get conversionFailedBody;
 }
 
 class _AppLocalizationsDelegate

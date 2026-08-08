@@ -322,5 +322,19 @@ class AppLocalizationsHu extends AppLocalizations {
   String get uploadAreaOr => 'vagy';
 
   @override
-  String get uploadAreaUploadFile => 'Tölts fel egy képet vagy PDF-et';
+  String get uploadAreaUploadFile =>
+      'Kép vagy dokumentum feltöltése (PDF, Word, Excel, OpenDocument vagy szövegfájl)';
+
+  @override
+  String get convertingDocument => 'Converting document...';
+
+  @override
+  String get analyzingAndTranslating => 'Analyzing and translating...';
+
+  @override
+  String get conversionFailedTitle => 'This document could not be converted.';
+
+  @override
+  String get conversionFailedBody =>
+      'Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again.';
 }

@@ -101,5 +101,5 @@
   "documentQuestionError": "Antwort konnte nicht geladen werden. Bitte versuche es erneut.",
   "uploadAreaTakePhoto": "Mach ein Foto",
   "uploadAreaOr": "oder",
-  "uploadAreaUploadFile": "Lade ein Bild oder eine PDF hoch"
+  "uploadAreaUploadFile": "Bild oder Dokument hochladen (PDF, Word, Excel, OpenDocument oder Textdatei)"
 }

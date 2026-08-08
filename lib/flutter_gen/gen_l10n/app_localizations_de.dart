@@ -324,5 +324,19 @@ class AppLocalizationsDe extends AppLocalizations {
   String get uploadAreaOr => 'oder';
 
   @override
-  String get uploadAreaUploadFile => 'Lade ein Bild oder eine PDF hoch';
+  String get uploadAreaUploadFile =>
+      'Bild oder Dokument hochladen (PDF, Word, Excel, OpenDocument oder Textdatei)';
+
+  @override
+  String get convertingDocument => 'Converting document...';
+
+  @override
+  String get analyzingAndTranslating => 'Analyzing and translating...';
+
+  @override
+  String get conversionFailedTitle => 'This document could not be converted.';
+
+  @override
+  String get conversionFailedBody =>
+      'Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again.';
 }

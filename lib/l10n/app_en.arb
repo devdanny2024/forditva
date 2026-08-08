@@ -123,5 +123,9 @@
   "documentQuestionError": "Couldn't get an answer. Please try again.",
   "uploadAreaTakePhoto": "Take a photo",
   "uploadAreaOr": "or",
-  "uploadAreaUploadFile": "Upload an image or PDF"
+  "uploadAreaUploadFile": "Upload an image or document (PDF, Word, Excel, OpenDocument, or text file)",
+  "convertingDocument": "Converting document...",
+  "analyzingAndTranslating": "Analyzing and translating...",
+  "conversionFailedTitle": "This document could not be converted.",
+  "conversionFailedBody": "Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again."
 }

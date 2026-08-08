@@ -1,3 +1,5 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'document/document_translation_page.dart';
 import 'favorite.dart';
+import 'firebase_options.dart';
 import 'flutter_gen/gen_l10n/app_localizations.dart';
 import 'history.dart';
 import 'image_page.dart';
@@ -37,6 +40,7 @@ void main() async {
   ]);
 
   await dotenv.load();
+  await _initFirebaseAppCheck();
   await ThirdLanguagePref.load();
   await LevelPref.load();
   await TokenBalance.instance.load();
@@ -50,6 +54,28 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+/// Activates Firebase App Check (Play Integrity on Android, App Attest on
+/// iOS) so the document-conversion endpoint can verify requests come from a
+/// genuine, unmodified install of this app, with no bundled secret to
+/// extract (Markus, 2026-08: "properly secure solution", not a static API
+/// key). Non-fatal: firebase_options.dart is still a placeholder until a
+/// real Firebase project exists, so this silently no-ops instead of
+/// crashing startup until then.
+Future<void> _initFirebaseAppCheck() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+      appleProvider: AppleProvider.appAttest,
+    );
+  } catch (e) {
+    debugPrint('Firebase App Check not active (expected until the real '
+        'Firebase project is configured): $e');
+  }
 }
 
 class MyApp extends StatefulWidget {
