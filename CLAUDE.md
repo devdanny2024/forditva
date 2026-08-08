@@ -97,23 +97,27 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-08-08, v1.0.1+68)
+## Current status (2026-08-08, v1.0.1+69)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-08-08-doc-conversion.apk` (v1.0.1+68, package
+`Downloads\forditva-2026-08-08-de-hu-strings.apk` (v1.0.1+69, package
 `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
-`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +68
-build path (commit `cbd6554`, one commit after this APK's `da4c175` — see
-note below) also succeeded on CI. **The document-conversion feature itself
-won't work yet** (Firebase project doesn't exist), see the dedicated section
-above — everything else in the app is unaffected and fully functional.
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +69
+build path is the same commit and also succeeded on CI. +69 = Markus's final
+German/Hungarian for the two remaining document-conversion strings
+(progress states + conversion-failure dialog), replacing the English
+fallback. **The document-conversion feature itself still won't work yet**
+(Firebase project doesn't exist), see the dedicated section above —
+everything else in the app is unaffected and fully functional. One icon
+still needed from Markus: a generic document icon (no "PDF" text on it) to
+replace the PDF-branded one now shared across all supported file types —
+asked, not yet sent.
 
-Note on +68's two commits: `da4c175` (this APK) added the whole
-document-conversion feature; CI then caught a real iOS-only build break
-(firebase_app_check needs a higher deployment target than the project's
-default 12.0), fixed in `cbd6554` by raising it to 15.0. Both commits are
-version 1.0.1+68 — only `cbd6554` builds on iOS; the Android APK from either
-commit is identical (the deployment-target fix is iOS-only).
+Note on +68's two commits: `da4c175` added the whole document-conversion
+feature; CI then caught a real iOS-only build break (firebase_app_check
+needs a higher deployment target than the project's default 12.0), fixed in
+`cbd6554` by raising it to 15.0. Both commits are version 1.0.1+68. +69
+(this APK) builds on `cbd6554`.
 
 Version history since +58: +59 = icon repositioning + Tutor header
 localization (commit `ddb6b5b`); +60 = upload-area text/icons + final
@@ -140,7 +144,9 @@ Image page result text (was oversized: flat 24px translate-mode text, up to
 50px interpret-mode HTML) and wired up real pinch-to-zoom via raw pointer
 tracking, since nothing previously moved `_zoomLevel` off its 1.0 default
 (commit `0ccf3bc`); +68 = added the whole document-conversion feature, see
-the dedicated section above (commits `da4c175` + `cbd6554`).
+the dedicated section above (commits `da4c175` + `cbd6554`); +69 = Markus's
+final German/Hungarian for the two remaining document-conversion strings,
+replacing the English fallback.
 
 Note: the iOS TestFlight upload for +62 failed once on a transient Apple
 Content Delivery error (500 then 409 "resource currently being updated") —
