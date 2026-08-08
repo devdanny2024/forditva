@@ -101,5 +101,9 @@
   "documentQuestionError": "Antwort konnte nicht geladen werden. Bitte versuche es erneut.",
   "uploadAreaTakePhoto": "Mach ein Foto",
   "uploadAreaOr": "oder",
-  "uploadAreaUploadFile": "Bild oder Dokument hochladen (PDF, Word, Excel, OpenDocument oder Textdatei)"
+  "uploadAreaUploadFile": "Bild oder Dokument hochladen (PDF, Word, Excel, OpenDocument oder Textdatei)",
+  "convertingDocument": "Dokument wird konvertiert...",
+  "analyzingAndTranslating": "Dokument wird analysiert und übersetzt...",
+  "conversionFailedTitle": "Dieses Dokument konnte nicht konvertiert werden.",
+  "conversionFailedBody": "Bitte stellen Sie sicher, dass die Datei nicht passwortgeschützt oder beschädigt ist und ein unterstütztes Format hat. Versuchen Sie es anschließend erneut."
 }

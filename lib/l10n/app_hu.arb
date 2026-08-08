@@ -101,5 +101,9 @@
   "documentQuestionError": "Nem sikerült lekérni a választ. Kérjük, próbáld újra.",
   "uploadAreaTakePhoto": "Készíts egy fotót",
   "uploadAreaOr": "vagy",
-  "uploadAreaUploadFile": "Kép vagy dokumentum feltöltése (PDF, Word, Excel, OpenDocument vagy szövegfájl)"
+  "uploadAreaUploadFile": "Kép vagy dokumentum feltöltése (PDF, Word, Excel, OpenDocument vagy szövegfájl)",
+  "convertingDocument": "Dokumentum konvertálása...",
+  "analyzingAndTranslating": "Dokumentum elemzése és fordítása...",
+  "conversionFailedTitle": "A dokumentumot nem sikerült konvertálni.",
+  "conversionFailedBody": "Kérjük, ellenőrizze, hogy a fájl nem jelszóval védett vagy sérült, és támogatott formátumú. Ezután próbálja meg újra."
 }

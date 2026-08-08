@@ -326,15 +326,16 @@ class AppLocalizationsHu extends AppLocalizations {
       'Kép vagy dokumentum feltöltése (PDF, Word, Excel, OpenDocument vagy szövegfájl)';
 
   @override
-  String get convertingDocument => 'Converting document...';
+  String get convertingDocument => 'Dokumentum konvertálása...';
 
   @override
-  String get analyzingAndTranslating => 'Analyzing and translating...';
+  String get analyzingAndTranslating => 'Dokumentum elemzése és fordítása...';
 
   @override
-  String get conversionFailedTitle => 'This document could not be converted.';
+  String get conversionFailedTitle =>
+      'A dokumentumot nem sikerült konvertálni.';
 
   @override
   String get conversionFailedBody =>
-      'Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again.';
+      'Kérjük, ellenőrizze, hogy a fájl nem jelszóval védett vagy sérült, és támogatott formátumú. Ezután próbálja meg újra.';
 }

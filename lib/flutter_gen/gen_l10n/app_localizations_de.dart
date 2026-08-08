@@ -328,15 +328,17 @@ class AppLocalizationsDe extends AppLocalizations {
       'Bild oder Dokument hochladen (PDF, Word, Excel, OpenDocument oder Textdatei)';
 
   @override
-  String get convertingDocument => 'Converting document...';
+  String get convertingDocument => 'Dokument wird konvertiert...';
 
   @override
-  String get analyzingAndTranslating => 'Analyzing and translating...';
+  String get analyzingAndTranslating =>
+      'Dokument wird analysiert und übersetzt...';
 
   @override
-  String get conversionFailedTitle => 'This document could not be converted.';
+  String get conversionFailedTitle =>
+      'Dieses Dokument konnte nicht konvertiert werden.';
 
   @override
   String get conversionFailedBody =>
-      'Please make sure the file is not password-protected, corrupted, or in an unsupported format, then try again.';
+      'Bitte stellen Sie sicher, dass die Datei nicht passwortgeschützt oder beschädigt ist und ein unterstütztes Format hat. Versuchen Sie es anschließend erneut.';
 }
