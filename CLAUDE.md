@@ -97,13 +97,23 @@ machine; the CI workflows bump it to 4g (Jetifier OOMs at 1536m on the runner).
   new one; updates are normal after that.
 - iOS bundle id: `hu.wirinungarn.forditva3`.
 
-## Current status (2026-07-27, v1.0.1+66)
+## Current status (2026-08-08, v1.0.1+68)
 
 Latest verified sideload APK for Markus:
-`Downloads\forditva-2026-07-27-answer-lang-textfield-fix.apk` (v1.0.1+66,
-package `hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified
-against `037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`).
-iOS +66 build path is the same commit and also succeeded on CI.
+`Downloads\forditva-2026-08-08-doc-conversion.apk` (v1.0.1+68, package
+`hu.wirinungarn.forditva`, debug-key signed, signer SHA-256 verified against
+`037e7f9488a7920ad7961494f89c697207f1b71a72ae9b12e8f76a7e2530401c`). iOS +68
+build path (commit `cbd6554`, one commit after this APK's `da4c175` — see
+note below) also succeeded on CI. **The document-conversion feature itself
+won't work yet** (Firebase project doesn't exist), see the dedicated section
+above — everything else in the app is unaffected and fully functional.
+
+Note on +68's two commits: `da4c175` (this APK) added the whole
+document-conversion feature; CI then caught a real iOS-only build break
+(firebase_app_check needs a higher deployment target than the project's
+default 12.0), fixed in `cbd6554` by raising it to 15.0. Both commits are
+version 1.0.1+68 — only `cbd6554` builds on iOS; the Android APK from either
+commit is identical (the deployment-target fix is iOS-only).
 
 Version history since +58: +59 = icon repositioning + Tutor header
 localization (commit `ddb6b5b`); +60 = upload-area text/icons + final
@@ -125,7 +135,12 @@ distinct glyph per mode is enough on its own; +66 = ask-question answer was
 generated in the app's UI language instead of the selected target language
 (_leftLang) — same bug class as the old language-mismatch issues elsewhere in
 this file, fixed the same way; also grew the question text field to 3 visible
-lines (was 1) so it signals longer questions are welcome.
+lines (was 1) so it signals longer questions are welcome; +67 = shrank the
+Image page result text (was oversized: flat 24px translate-mode text, up to
+50px interpret-mode HTML) and wired up real pinch-to-zoom via raw pointer
+tracking, since nothing previously moved `_zoomLevel` off its 1.0 default
+(commit `0ccf3bc`); +68 = added the whole document-conversion feature, see
+the dedicated section above (commits `da4c175` + `cbd6554`).
 
 Note: the iOS TestFlight upload for +62 failed once on a transient Apple
 Content Delivery error (500 then 409 "resource currently being updated") —
